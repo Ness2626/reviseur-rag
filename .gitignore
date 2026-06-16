@@ -1,0 +1,15 @@
+# Secrets
+.env
+
+# Index persisté (regénéré au démarrage)
+index_cache.pkl
+
+# Documents uploadés
+docs/*
+
+# Python
+__pycache__/
+*.pyc
+venv-rag/
+*.egg-info/
+!docs/.gitkeep
