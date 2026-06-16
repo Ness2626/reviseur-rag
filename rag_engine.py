@@ -4,6 +4,17 @@ import numpy as np
 
 import chatbot
 
+FICHE_BUDGET_CHARS = 16000
+
+
+def _within_budget(chunks, budget=FICHE_BUDGET_CHARS):
+    total = sum(len(chunk.text) for chunk in chunks)
+    if total <= budget:
+        return chunks
+    keep = max(1, int(len(chunks) * budget / total))
+    stride = len(chunks) / keep
+    return [chunks[int(i * stride)] for i in range(keep)]
+
 
 class RagEngine:
     """Moteur RAG avec état (index, modèle) encapsulé et thread-safe.
@@ -55,3 +66,16 @@ class RagEngine:
         answer = chatbot.answer(self._client, question, retrieved)
         sources = sorted({chunk.label() for chunk in retrieved})
         return {"answer": answer, "sources": sources}
+
+    def generate_fiche(self, document=None):
+        with self._lock:
+            if document:
+                chunks = [chunk for chunk in self._chunks if chunk.source == document]
+            else:
+                chunks = list(self._chunks)
+        if not chunks:
+            return {"error": "Aucun contenu pour ce document."}
+        scope_label = document or "l'ensemble du corpus"
+        selected = _within_budget(chunks)
+        fiche = chatbot.summarize_fiche(self._client, selected, scope_label)
+        return {"fiche": fiche, "scope": scope_label}
