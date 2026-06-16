@@ -89,6 +89,27 @@
         .flash.ok { background: #dcfce7; color: #166534; }
         .flash.error { background: #fee2e2; color: #991b1b; }
 
+        .progress {
+            display: inline-block; background: var(--accent-soft); color: var(--accent-dark);
+            border-radius: 999px; padding: .3rem .9rem; font-size: .82rem; font-weight: 500; margin-bottom: .9rem;
+        }
+        .recall-actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: .4rem; }
+        textarea {
+            width: 100%; min-height: 90px; padding: .7rem .8rem; font-size: .95rem; font-family: inherit;
+            border: 1px solid var(--line); border-radius: 9px; resize: vertical; margin: .3rem 0 .6rem;
+        }
+        textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+        .card-question { font-size: 1.05rem; font-weight: 600; margin: .2rem 0 .8rem; }
+        .badge {
+            display: inline-block; border-radius: 999px; padding: .2rem .75rem; font-size: .82rem;
+            font-weight: 600; color: #fff; margin-right: .5rem;
+        }
+        .badge.good { background: #16a34a; }
+        .badge.mid { background: #d97706; }
+        .badge.bad { background: #dc2626; }
+        .reference { margin-top: .7rem; padding-top: .6rem; border-top: 1px solid var(--line); font-size: .9rem; }
+        .reference b { color: var(--muted); }
+
         .upload { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
         .upload input[type=file] { flex: 1; font-size: .88rem; }
         .upload button { background: #475569; }
@@ -106,7 +127,7 @@
         <button class="tab active" data-mode="qa">Q&amp;A</button>
         <button class="tab" data-mode="fiche">Fiche</button>
         <button class="tab" data-mode="quiz" disabled title="Bientôt">QCM</button>
-        <button class="tab" data-mode="recall" disabled title="Bientôt">Interroge-moi</button>
+        <button class="tab" data-mode="recall">Interroge-moi</button>
         <button class="tab" data-mode="flashcards" disabled title="Bientôt">Flashcards</button>
     </div>
 
@@ -131,6 +152,16 @@
         <div class="panel" id="panel-fiche">
             <button id="fiche-btn">Générer la fiche de révision</button>
             <div class="hint">Synthétise le document sélectionné (ou tout le corpus) en idées clés, définitions et questions d'auto-test.</div>
+        </div>
+
+        <div class="panel" id="panel-recall">
+            <div class="progress" id="recall-progress">—</div>
+            <div class="recall-actions">
+                <button class="ghost" id="gen-cards-btn">Générer des questions</button>
+                <button id="study-btn">Réviser</button>
+            </div>
+            <div class="hint">Génère un jeu de questions depuis tes cours, puis réponds de mémoire : l'IA te note et reprogramme chaque carte (répétition espacée).</div>
+            <div id="study-area"></div>
         </div>
     </div>
 
@@ -170,6 +201,7 @@
                 tab.classList.add("active");
                 $("panel-" + tab.dataset.mode).classList.add("active");
                 $("result").innerHTML = "";
+                if (tab.dataset.mode === "recall") { $("study-area").innerHTML = ""; refreshProgress(); }
             });
         });
 
@@ -211,6 +243,87 @@
             } catch (err) { $("result").innerHTML = ""; flash("Erreur réseau.", true); }
             finally { btn.disabled = false; }
         });
+
+        const showProgress = (p) => {
+            $("recall-progress").textContent =
+                `À réviser : ${p.due} · Maîtrisées : ${p.learned} / ${p.total}`;
+        };
+
+        const refreshProgress = async () => {
+            const res = await fetch("/api/study/next", {
+                method: "POST", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({document: $("document").value})
+            });
+            const data = await res.json();
+            if (data.progress) showProgress(data.progress);
+        };
+
+        $("gen-cards-btn").addEventListener("click", async () => {
+            const btn = $("gen-cards-btn");
+            btn.disabled = true;
+            flash("Génération des questions…", false);
+            try {
+                const res = await fetch("/api/cards/generate", {
+                    method: "POST", headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({document: $("document").value, count: 8})
+                });
+                const data = await res.json();
+                if (!res.ok) { flash(data.error, true); return; }
+                showProgress(data.progress);
+                flash(`${data.added} question(s) générée(s) pour « ${data.scope} ».`, false);
+            } catch (err) { flash("Erreur réseau.", true); }
+            finally { btn.disabled = false; }
+        });
+
+        const renderCard = (card) => {
+            $("study-area").innerHTML =
+                `<div class="answer"><div class="card-question">${card.question}</div>` +
+                `<textarea id="user-answer" placeholder="Ta réponse de mémoire…" autofocus></textarea>` +
+                `<button id="submit-answer" data-id="${card.id}">Valider</button></div>`;
+            $("submit-answer").addEventListener("click", submitAnswer);
+        };
+
+        const badgeClass = (s) => s >= 4 ? "good" : (s >= 3 ? "mid" : "bad");
+
+        const loadNextCard = async () => {
+            $("study-area").innerHTML = '<div class="spinner">Chargement…</div>';
+            const res = await fetch("/api/study/next", {
+                method: "POST", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({document: $("document").value})
+            });
+            const data = await res.json();
+            showProgress(data.progress);
+            if (!data.card) {
+                $("study-area").innerHTML =
+                    '<div class="answer">Aucune carte à réviser pour le moment. 🎉<div class="hint">Génère des questions ou reviens plus tard (répétition espacée).</div></div>';
+                return;
+            }
+            renderCard(data.card);
+        };
+
+        const submitAnswer = async (e) => {
+            const cardId = Number(e.target.dataset.id);
+            const answer = $("user-answer").value.trim();
+            if (!answer) return;
+            e.target.disabled = true;
+            $("study-area").insertAdjacentHTML("beforeend", '<div class="spinner">Correction…</div>');
+            const res = await fetch("/api/study/answer", {
+                method: "POST", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({card_id: cardId, answer, document: $("document").value})
+            });
+            const data = await res.json();
+            if (!res.ok) { flash(data.error, true); return; }
+            showProgress(data.progress);
+            $("study-area").innerHTML =
+                `<div class="answer">` +
+                `<span class="badge ${badgeClass(data.score)}">${data.score}/5</span>${data.feedback}` +
+                `<div class="reference"><b>Réponse attendue :</b><br>${data.reference}</div>` +
+                `<div class="hint">Prochaine révision dans ${data.next_due_in_days} jour(s).</div>` +
+                `<button id="next-card" style="margin-top:.8rem">Question suivante</button></div>`;
+            $("next-card").addEventListener("click", loadNextCard);
+        };
+
+        $("study-btn").addEventListener("click", loadNextCard);
 
         $("upload-form").addEventListener("submit", async (e) => {
             e.preventDefault();

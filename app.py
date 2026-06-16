@@ -8,6 +8,7 @@ from sentence_transformers import SentenceTransformer
 from werkzeug.utils import secure_filename
 
 import chatbot
+import store
 from rag_engine import RagEngine
 
 app = Flask(__name__)
@@ -22,6 +23,7 @@ print(f"Chargement du modèle d'embeddings ({chatbot.EMBEDDING_MODEL})...")
 _model = SentenceTransformer(chatbot.EMBEDDING_MODEL)
 os.makedirs(chatbot.DOCS_DIR, exist_ok=True)
 
+store.init_db()
 _engine = RagEngine(Groq(api_key=_api_key), _model)
 _engine.rebuild()
 print(f"Index prêt : {len(_engine.documents())} document(s).")
@@ -58,6 +60,34 @@ def api_fiche():
     result = _engine.generate_fiche(document)
     status = 400 if "error" in result else 200
     return jsonify(result), status
+
+
+@app.route("/api/cards/generate", methods=["POST"])
+def api_cards_generate():
+    data = request.get_json(silent=True) or {}
+    document = data.get("document") or None
+    count = data.get("count", 8)
+    if not _engine.has_index():
+        return jsonify({"error": "Aucun document indexé. Ajoutez d'abord un PDF."}), 400
+    result = _engine.generate_cards(document, count)
+    return jsonify(result), (400 if "error" in result else 200)
+
+
+@app.route("/api/study/next", methods=["POST"])
+def api_study_next():
+    data = request.get_json(silent=True) or {}
+    return jsonify(_engine.next_card(data.get("document") or None))
+
+
+@app.route("/api/study/answer", methods=["POST"])
+def api_study_answer():
+    data = request.get_json(silent=True) or {}
+    card_id = data.get("card_id")
+    answer = (data.get("answer") or "").strip()
+    if card_id is None or not answer:
+        return jsonify({"error": "Réponse vide."}), 400
+    result = _engine.submit_answer(card_id, answer, data.get("document") or None)
+    return jsonify(result), (400 if "error" in result else 200)
 
 
 @app.route("/api/upload", methods=["POST"])
