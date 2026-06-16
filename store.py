@@ -44,6 +44,7 @@ def init_db(db_path=DB_PATH):
                 question TEXT NOT NULL,
                 answer TEXT NOT NULL,
                 options TEXT,
+                explanation TEXT,
                 ease REAL NOT NULL DEFAULT 2.5,
                 repetitions INTEGER NOT NULL DEFAULT 0,
                 interval INTEGER NOT NULL DEFAULT 0,
@@ -55,6 +56,8 @@ def init_db(db_path=DB_PATH):
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(cards)")}
         if "options" not in columns:
             conn.execute("ALTER TABLE cards ADD COLUMN options TEXT")
+        if "explanation" not in columns:
+            conn.execute("ALTER TABLE cards ADD COLUMN explanation TEXT")
 
 
 def add_cards(document, cards, db_path=DB_PATH):
@@ -65,6 +68,7 @@ def add_cards(document, cards, db_path=DB_PATH):
             c["question"],
             c["answer"],
             json.dumps(c["options"]) if c.get("options") else None,
+            c.get("explanation"),
             today,
             today,
         )
@@ -72,8 +76,8 @@ def add_cards(document, cards, db_path=DB_PATH):
     ]
     with _lock, _connect(db_path) as conn:
         conn.executemany(
-            "INSERT INTO cards (document, question, answer, options, due_date, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO cards (document, question, answer, options, explanation, due_date, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
     return len(rows)

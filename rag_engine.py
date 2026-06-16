@@ -1,3 +1,4 @@
+import json
 import random
 import threading
 
@@ -185,14 +186,25 @@ class RagEngine:
         card = store.get_card(card_id)
         if not card or not card.get("options"):
             return {"error": "Carte introuvable."}
-        correct = selected == card["answer"]
+        correct_answers = self._decode_correct(card["answer"])
+        chosen = set(selected) if isinstance(selected, list) else {selected}
+        correct = chosen == set(correct_answers)
         schedule = store.record_review(card_id, QUIZ_CORRECT_GRADE if correct else QUIZ_WRONG_GRADE)
         return {
             "correct": correct,
-            "answer": card["answer"],
+            "answers": correct_answers,
+            "explanation": card.get("explanation"),
             "next_due_in_days": schedule["interval"] if schedule else None,
             "progress": store.progress(document, kind="quiz"),
         }
+
+    @staticmethod
+    def _decode_correct(answer):
+        try:
+            decoded = json.loads(answer)
+        except (ValueError, TypeError):
+            return [answer]
+        return decoded if isinstance(decoded, list) else [answer]
 
     def progress(self, document=None, kind=None):
         return store.progress(document, kind=kind)

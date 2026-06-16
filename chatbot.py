@@ -199,12 +199,14 @@ def generate_quiz(client, chunks, count, scope_label):
     context = "\n\n---\n\n".join(f"[{chunk.label()}]\n{chunk.text}" for chunk in chunks)
     prompt = (
         f"À partir du contexte de cours ci-dessous, génère {count} questions à choix multiples sur "
-        f"« {scope_label} ». Chaque question a exactement 4 propositions dont UNE seule correcte. "
-        "Les distracteurs doivent être plausibles mais faux. Reste strictement fidèle au contenu, "
-        "n'invente rien.\n"
+        f"« {scope_label} ». Chaque question a exactement 4 propositions, dont UNE OU PLUSIEURS "
+        "correctes (au moins une). Les distracteurs doivent être plausibles mais faux. Reste "
+        "strictement fidèle au contenu, n'invente rien.\n"
         'Réponds UNIQUEMENT avec un objet JSON de la forme : '
-        '{"cards": [{"question": "...", "answer": "...", "options": ["...", "...", "...", "..."]}]}. '
-        "Le champ answer doit être identique, au caractère près, à l'une des options.\n\n"
+        '{"cards": [{"question": "...", "options": ["...", "...", "...", "..."], "correct": ["...", "..."], "explanation": "..."}]}. '
+        "Le champ correct est la liste des propositions exactes (au caractère près) qui sont vraies. "
+        "Le champ explanation explique pourquoi chaque bonne réponse est correcte ET pourquoi chacune "
+        "des autres propositions est fausse, en citant chaque distracteur.\n\n"
         f"Contexte :\n{context}"
     )
     response = client.chat.completions.create(
@@ -220,10 +222,18 @@ def generate_quiz(client, chunks, count, scope_label):
     cards = []
     for card in data.get("cards", []):
         question = card.get("question")
-        answer = card.get("answer")
         options = card.get("options")
-        if question and answer and isinstance(options, list) and len(options) >= 2 and answer in options:
-            cards.append({"question": question, "answer": answer, "options": options})
+        correct = card.get("correct")
+        if not (question and isinstance(options, list) and len(options) >= 2):
+            continue
+        if not (isinstance(correct, list) and correct and all(c in options for c in correct)):
+            continue
+        cards.append({
+            "question": question,
+            "answer": json.dumps(correct, ensure_ascii=False),
+            "options": options,
+            "explanation": card.get("explanation"),
+        })
     return cards
 
 

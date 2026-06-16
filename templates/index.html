@@ -182,7 +182,7 @@
                 <button class="ghost" id="gen-quiz-btn">Générer un QCM</button>
                 <button id="quiz-btn">Démarrer</button>
             </div>
-            <div class="hint">Questions à choix multiples générées depuis tes cours. Bonne ou mauvaise réponse, la carte est replanifiée (répétition espacée).</div>
+            <div class="hint">Questions à choix multiples (une ou plusieurs bonnes réponses) générées depuis tes cours. Bonne ou mauvaise réponse, la carte est replanifiée (répétition espacée).</div>
             <div id="quiz-area"></div>
         </div>
 
@@ -394,10 +394,11 @@
         const renderQuiz = (card) => {
             quizOptions = card.options;
             const opts = card.options.map((o, i) =>
-                `<label class="opt" data-i="${i}"><input type="radio" name="quiz-opt" value="${i}"> ${esc(o)}</label>`
+                `<label class="opt" data-i="${i}"><input type="checkbox" name="quiz-opt" value="${i}"> ${esc(o)}</label>`
             ).join("");
             $("quiz-area").innerHTML =
                 `<div class="answer"><div class="card-question">${esc(card.question)}</div>` +
+                `<div class="hint">Coche toutes les bonnes réponses (une ou plusieurs).</div>` +
                 `<div class="options">${opts}</div>` +
                 `<button id="submit-quiz" data-id="${card.id}">Valider</button></div>`;
             $("submit-quiz").addEventListener("click", submitQuiz);
@@ -421,9 +422,9 @@
 
         const submitQuiz = async (e) => {
             const cardId = Number(e.target.dataset.id);
-            const checked = document.querySelector('input[name="quiz-opt"]:checked');
-            if (!checked) return;
-            const selected = quizOptions[Number(checked.value)];
+            const checked = Array.from(document.querySelectorAll('input[name="quiz-opt"]:checked'));
+            if (checked.length === 0) return;
+            const selected = checked.map(c => quizOptions[Number(c.value)]);
             e.target.disabled = true;
             const res = await fetch("/api/quiz/answer", {
                 method: "POST", headers: {"Content-Type": "application/json"},
@@ -432,17 +433,21 @@
             const data = await res.json();
             if (!res.ok) { flash(data.error, true); return; }
             showQuizProgress(data.progress);
+            const answers = new Set(data.answers || []);
+            const chosen = new Set(selected);
             document.querySelectorAll(".opt").forEach(el => {
                 const value = quizOptions[Number(el.dataset.i)];
-                if (value === data.answer) el.classList.add("correct");
-                else if (el.contains(checked) && !data.correct) el.classList.add("wrong");
+                if (answers.has(value)) el.classList.add("correct");
+                else if (chosen.has(value)) el.classList.add("wrong");
             });
             const verdict = data.correct
                 ? '<span class="badge good">Bonne réponse ✓</span>'
                 : '<span class="badge bad">Raté ✗</span>';
+            const answersLabel = (data.answers || []).join(" · ");
             $("quiz-area").insertAdjacentHTML("beforeend",
                 `<div class="answer">${verdict}` +
-                (data.correct ? "" : `<div class="reference"><b>Bonne réponse :</b> ${esc(data.answer)}</div>`) +
+                (data.correct ? "" : `<div class="reference"><b>Bonne(s) réponse(s) :</b> ${esc(answersLabel)}</div>`) +
+                (data.explanation ? `<div class="reference"><b>Explication :</b> ${esc(data.explanation)}</div>` : "") +
                 `<div class="hint">Prochaine révision dans ${data.next_due_in_days} jour(s).</div>` +
                 `<button id="next-quiz" style="margin-top:.8rem">Question suivante</button></div>`);
             $("next-quiz").addEventListener("click", loadNextQuiz);
