@@ -9,7 +9,7 @@ L'idée n'est pas seulement de retrouver l'information (ça, un chatbot le fait 
 - **Q&A** — question en langage naturel, réponse construite à partir des passages les plus proches, avec citation des sources (fichier + page).
 - **Fiche** — synthèse structurée d'un document : idées clés, définitions, à retenir, questions d'auto-test.
 - **Interroge-moi** — le système génère des cartes question/réponse, t'interroge, note ta réponse de 0 à 5 (correction par l'IA) et la replanifie avec l'algorithme SM-2.
-- **QCM** — questions à choix multiples générées depuis tes cours, correction instantanée. Bonne réponse → carte espacée, mauvaise → carte revue dès le lendemain (même planning SM-2).
+- **QCM** — questions à choix multiples générées depuis tes cours, avec une ou plusieurs bonnes réponses (cases à cocher, correction tout-ou-rien) et une explication systématique (pourquoi la bonne est correcte, pourquoi les autres sont fausses). Bonne réponse → carte espacée, mauvaise → carte revue dès le lendemain (même planning SM-2).
 - **Flashcards** — révision en autonomie du même jeu de cartes que « Interroge-moi » : on révèle la réponse et on s'auto-note (Raté / Difficile / Bien / Facile), sans appel à l'IA. La note alimente le SM-2.
 
 ## Comment ça marche
