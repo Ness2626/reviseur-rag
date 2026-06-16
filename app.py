@@ -1,17 +1,16 @@
 import os
 import sys
-import threading
 
 from dotenv import load_dotenv
-from flask import Flask, flash, redirect, render_template, request, url_for
+from flask import Flask, jsonify, render_template, request
 from groq import Groq
 from sentence_transformers import SentenceTransformer
 from werkzeug.utils import secure_filename
 
 import chatbot
+from rag_engine import RagEngine
 
 app = Flask(__name__)
-app.secret_key = os.urandom(16)
 
 load_dotenv()
 _api_key = os.getenv("GROQ_API_KEY")
@@ -19,67 +18,48 @@ if not _api_key:
     print("Erreur : GROQ_API_KEY introuvable dans le fichier .env", file=sys.stderr)
     sys.exit(1)
 
-_client = Groq(api_key=_api_key)
-_model = None
-_chunks = []
-_embeddings = None
-_documents = []
-_index_lock = threading.Lock()
-
-
-def rebuild_index():
-    global _chunks, _embeddings, _documents
-    paths = chatbot.discover_pdfs()
-    with _index_lock:
-        _chunks, _embeddings = chatbot.build_index_cached(paths, _model)
-        _documents = sorted({chunk.source for chunk in _chunks})
-    print(f"Index reconstruit : {len(_documents)} document(s), {len(_chunks)} chunks.")
-
-
 print(f"Chargement du modèle d'embeddings ({chatbot.EMBEDDING_MODEL})...")
 _model = SentenceTransformer(chatbot.EMBEDDING_MODEL)
 os.makedirs(chatbot.DOCS_DIR, exist_ok=True)
-rebuild_index()
-print("Index prêt.")
+
+_engine = RagEngine(Groq(api_key=_api_key), _model)
+_engine.rebuild()
+print(f"Index prêt : {len(_engine.documents())} document(s).")
 
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/")
 def index():
-    question = ""
-    response = ""
-    sources = []
-    if request.method == "POST":
-        question = request.form.get("question", "").strip()
-        if not _chunks:
-            response = "Aucun document indexé. Ajoutez d'abord un PDF."
-        elif question:
-            with _index_lock:
-                retrieved = chatbot.retrieve(question, _chunks, _embeddings, _model)
-            response = chatbot.answer(_client, question, retrieved)
-            sources = sorted({chunk.label() for chunk in retrieved})
-    return render_template(
-        "index.html",
-        question=question,
-        response=response,
-        sources=sources,
-        documents=_documents,
-    )
+    return render_template("index.html", documents=_engine.documents())
 
 
-@app.route("/upload", methods=["POST"])
-def upload():
+@app.route("/api/documents")
+def api_documents():
+    return jsonify({"documents": _engine.documents()})
+
+
+@app.route("/api/ask", methods=["POST"])
+def api_ask():
+    data = request.get_json(silent=True) or {}
+    question = (data.get("question") or "").strip()
+    document = data.get("document") or None
+    if not question:
+        return jsonify({"error": "Question vide."}), 400
+    if not _engine.has_index():
+        return jsonify({"error": "Aucun document indexé. Ajoutez d'abord un PDF."}), 400
+    return jsonify(_engine.ask(question, document))
+
+
+@app.route("/api/upload", methods=["POST"])
+def api_upload():
     file = request.files.get("pdf")
     if not file or not file.filename:
-        flash("Aucun fichier sélectionné.")
-        return redirect(url_for("index"))
+        return jsonify({"error": "Aucun fichier sélectionné."}), 400
     filename = secure_filename(file.filename)
     if not filename.lower().endswith(".pdf"):
-        flash("Seuls les fichiers PDF sont acceptés.")
-        return redirect(url_for("index"))
+        return jsonify({"error": "Seuls les fichiers PDF sont acceptés."}), 400
     file.save(os.path.join(chatbot.DOCS_DIR, filename))
-    rebuild_index()
-    flash(f"« {filename} » ajouté et indexé.")
-    return redirect(url_for("index"))
+    _engine.rebuild()
+    return jsonify({"message": f"« {filename} » ajouté et indexé.", "documents": _engine.documents()})
 
 
 if __name__ == "__main__":
