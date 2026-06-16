@@ -1,0 +1,6 @@
+flask
+groq
+pypdf
+python-dotenv
+sentence-transformers
+numpy

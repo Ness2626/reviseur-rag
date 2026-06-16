@@ -3,55 +3,127 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Chatbot RAG</title>
+    <title>Réviseur RAG</title>
     <style>
         body { font-family: system-ui, sans-serif; max-width: 720px; margin: 3rem auto; padding: 0 1rem; color: #1a1a1a; }
         h1 { font-size: 1.4rem; margin-bottom: .3rem; }
-        .corpus { color: #666; font-size: .85rem; margin-bottom: 1.5rem; }
+        .corpus { color: #666; font-size: .85rem; margin-bottom: 1.2rem; }
+        .tabs { display: flex; gap: .4rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
+        .tab { padding: .4rem .9rem; border: 1px solid #ccc; border-radius: 20px; background: #fff; cursor: pointer; font-size: .9rem; }
+        .tab.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+        .tab:disabled { color: #aaa; cursor: not-allowed; background: #f5f5f5; }
+        .controls { display: flex; gap: .5rem; margin-bottom: 1rem; align-items: center; flex-wrap: wrap; }
+        select { padding: .55rem .6rem; font-size: .9rem; border: 1px solid #ccc; border-radius: 6px; }
         form { display: flex; gap: .5rem; margin-bottom: 1rem; }
         input[type=text] { flex: 1; padding: .6rem .8rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 6px; }
         input[type=file] { flex: 1; font-size: .9rem; }
         button { padding: .6rem 1.2rem; font-size: 1rem; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; }
         button:hover { background: #1d4ed8; }
-        .upload { padding-top: 1rem; border-top: 1px solid #eee; }
+        .upload { padding-top: 1rem; border-top: 1px solid #eee; margin-top: 1.5rem; }
         .upload button { background: #475569; }
         .upload button:hover { background: #334155; }
         .flash { background: #dcfce7; color: #166534; border-radius: 6px; padding: .6rem .9rem; margin-bottom: 1rem; font-size: .9rem; }
+        .flash.error { background: #fee2e2; color: #991b1b; }
         .answer { background: #f5f5f5; border-radius: 8px; padding: 1rem 1.2rem; white-space: pre-wrap; line-height: 1.5; margin-bottom: 1.5rem; }
         .question { font-weight: 600; margin-bottom: .4rem; }
         .sources { margin-top: .9rem; padding-top: .7rem; border-top: 1px solid #ddd; font-size: .85rem; color: #555; }
         .sources span { display: inline-block; background: #e5edff; color: #1d4ed8; border-radius: 4px; padding: .1rem .5rem; margin: .15rem .25rem .15rem 0; }
+        .muted { color: #999; font-size: .85rem; }
     </style>
 </head>
 <body>
-    <h1>Chatbot RAG</h1>
-    <p class="corpus">Corpus : {{ documents | join(", ") if documents else "aucun document" }}</p>
+    <h1>Réviseur RAG</h1>
+    <p class="corpus">Corpus : <span id="corpus">{{ documents | join(", ") if documents else "aucun document" }}</span></p>
 
-    {% with messages = get_flashed_messages() %}
-        {% for message in messages %}<div class="flash">{{ message }}</div>{% endfor %}
-    {% endwith %}
+    <div class="tabs">
+        <button class="tab active" data-mode="qa">Q&amp;A</button>
+        <button class="tab" data-mode="fiche" disabled title="Bientôt">Fiche</button>
+        <button class="tab" data-mode="quiz" disabled title="Bientôt">QCM</button>
+        <button class="tab" data-mode="recall" disabled title="Bientôt">Interroge-moi</button>
+        <button class="tab" data-mode="flashcards" disabled title="Bientôt">Flashcards</button>
+    </div>
 
-    <form method="post" action="{{ url_for('index') }}">
-        <input type="text" name="question" placeholder="Posez votre question..." value="{{ question }}" autofocus>
+    <div id="flash"></div>
+
+    <div class="controls">
+        <label for="document" class="muted">Document :</label>
+        <select id="document">
+            <option value="">Tout le corpus</option>
+            {% for doc in documents %}<option value="{{ doc }}">{{ doc }}</option>{% endfor %}
+        </select>
+    </div>
+
+    <form id="ask-form">
+        <input type="text" id="question" placeholder="Posez votre question..." autofocus autocomplete="off">
         <button type="submit">Envoyer</button>
     </form>
 
-    {% if response %}
-    <div class="answer">
-        <div class="question">{{ question }}</div>
-        {{ response }}
-        {% if sources %}
-        <div class="sources">
-            <strong>Sources :</strong><br>
-            {% for source in sources %}<span>{{ source }}</span>{% endfor %}
-        </div>
-        {% endif %}
-    </div>
-    {% endif %}
+    <div id="result"></div>
 
-    <form class="upload" method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data">
-        <input type="file" name="pdf" accept="application/pdf">
+    <form class="upload" id="upload-form" enctype="multipart/form-data">
+        <input type="file" id="pdf" name="pdf" accept="application/pdf">
         <button type="submit">Ajouter un PDF</button>
     </form>
+
+    <script>
+        const flash = (msg, isError) => {
+            document.getElementById("flash").innerHTML =
+                `<div class="flash${isError ? " error" : ""}">${msg}</div>`;
+        };
+
+        const refreshDocuments = (documents) => {
+            document.getElementById("corpus").textContent =
+                documents.length ? documents.join(", ") : "aucun document";
+            const select = document.getElementById("document");
+            const current = select.value;
+            select.innerHTML = '<option value="">Tout le corpus</option>' +
+                documents.map(d => `<option value="${d}">${d}</option>`).join("");
+            select.value = current;
+        };
+
+        document.getElementById("ask-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const question = document.getElementById("question").value.trim();
+            if (!question) return;
+            const document_ = document.getElementById("document").value;
+            const result = document.getElementById("result");
+            result.innerHTML = '<div class="answer muted">Recherche en cours…</div>';
+            try {
+                const res = await fetch("/api/ask", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({question, document: document_})
+                });
+                const data = await res.json();
+                if (!res.ok) { result.innerHTML = ""; flash(data.error, true); return; }
+                const sources = data.sources.map(s => `<span>${s}</span>`).join("");
+                result.innerHTML =
+                    `<div class="answer"><div class="question">${question}</div>${data.answer}` +
+                    (sources ? `<div class="sources"><strong>Sources :</strong><br>${sources}</div>` : "") +
+                    `</div>`;
+            } catch (err) {
+                result.innerHTML = ""; flash("Erreur réseau.", true);
+            }
+        });
+
+        document.getElementById("upload-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById("pdf");
+            if (!fileInput.files.length) { flash("Aucun fichier sélectionné.", true); return; }
+            const body = new FormData();
+            body.append("pdf", fileInput.files[0]);
+            flash("Indexation en cours…", false);
+            try {
+                const res = await fetch("/api/upload", {method: "POST", body});
+                const data = await res.json();
+                if (!res.ok) { flash(data.error, true); return; }
+                refreshDocuments(data.documents);
+                fileInput.value = "";
+                flash(data.message, false);
+            } catch (err) {
+                flash("Erreur réseau.", true);
+            }
+        });
+    </script>
 </body>
 </html>
