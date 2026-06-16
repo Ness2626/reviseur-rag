@@ -110,6 +110,18 @@
         .reference { margin-top: .7rem; padding-top: .6rem; border-top: 1px solid var(--line); font-size: .9rem; }
         .reference b { color: var(--muted); }
 
+        .options { display: flex; flex-direction: column; gap: .5rem; margin: .7rem 0 1rem; }
+        .opt {
+            display: flex; align-items: center; gap: .6rem; padding: .6rem .85rem;
+            border: 1px solid var(--line); border-radius: 9px; cursor: pointer; transition: all .12s;
+        }
+        .opt:hover { border-color: var(--accent); background: var(--accent-soft); }
+        .opt input { margin: 0; }
+        .opt.correct { border-color: #16a34a; background: #dcfce7; }
+        .opt.wrong { border-color: #dc2626; background: #fee2e2; }
+        button.rate { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+        button.rate:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-dark); }
+
         .upload { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
         .upload input[type=file] { flex: 1; font-size: .88rem; }
         .upload button { background: #475569; }
@@ -126,9 +138,9 @@
     <div class="tabs">
         <button class="tab active" data-mode="qa">Q&amp;A</button>
         <button class="tab" data-mode="fiche">Fiche</button>
-        <button class="tab" data-mode="quiz" disabled title="Bientôt">QCM</button>
+        <button class="tab" data-mode="quiz">QCM</button>
         <button class="tab" data-mode="recall">Interroge-moi</button>
-        <button class="tab" data-mode="flashcards" disabled title="Bientôt">Flashcards</button>
+        <button class="tab" data-mode="flashcards">Flashcards</button>
     </div>
 
     <div id="flash"></div>
@@ -163,6 +175,25 @@
             <div class="hint">Génère un jeu de questions depuis tes cours, puis réponds de mémoire : l'IA te note et reprogramme chaque carte (répétition espacée).</div>
             <div id="study-area"></div>
         </div>
+
+        <div class="panel" id="panel-quiz">
+            <div class="progress" id="quiz-progress">—</div>
+            <div class="recall-actions">
+                <button class="ghost" id="gen-quiz-btn">Générer un QCM</button>
+                <button id="quiz-btn">Démarrer</button>
+            </div>
+            <div class="hint">Questions à choix multiples générées depuis tes cours. Bonne ou mauvaise réponse, la carte est replanifiée (répétition espacée).</div>
+            <div id="quiz-area"></div>
+        </div>
+
+        <div class="panel" id="panel-flashcards">
+            <div class="progress" id="flash-progress">—</div>
+            <div class="recall-actions">
+                <button id="flash-btn">Réviser</button>
+            </div>
+            <div class="hint">Même jeu de cartes que « Interroge-moi », révisé en autonomie : révèle la réponse et note-toi (pas de correction IA). Génère d'abord des questions dans l'onglet « Interroge-moi ».</div>
+            <div id="flash-area"></div>
+        </div>
     </div>
 
     <div class="output" id="result"></div>
@@ -178,6 +209,7 @@
     <script>
         const $ = (id) => document.getElementById(id);
         const md = (text) => (window.marked ? marked.parse(text) : text);
+        const esc = (s) => { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; };
 
         const flash = (msg, isError) => {
             $("flash").innerHTML = `<div class="flash ${isError ? "error" : "ok"}">${msg}</div>`;
@@ -202,6 +234,8 @@
                 $("panel-" + tab.dataset.mode).classList.add("active");
                 $("result").innerHTML = "";
                 if (tab.dataset.mode === "recall") { $("study-area").innerHTML = ""; refreshProgress(); }
+                if (tab.dataset.mode === "quiz") { $("quiz-area").innerHTML = ""; refreshQuizProgress(); }
+                if (tab.dataset.mode === "flashcards") { $("flash-area").innerHTML = ""; refreshFlashProgress(); }
             });
         });
 
@@ -324,6 +358,164 @@
         };
 
         $("study-btn").addEventListener("click", loadNextCard);
+
+        const showQuizProgress = (p) => {
+            $("quiz-progress").textContent = `À réviser : ${p.due} · Maîtrisées : ${p.learned} / ${p.total}`;
+        };
+
+        const refreshQuizProgress = async () => {
+            const res = await fetch("/api/quiz/next", {
+                method: "POST", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({document: $("document").value})
+            });
+            const data = await res.json();
+            if (data.progress) showQuizProgress(data.progress);
+        };
+
+        $("gen-quiz-btn").addEventListener("click", async () => {
+            const btn = $("gen-quiz-btn");
+            btn.disabled = true;
+            flash("Génération du QCM…", false);
+            try {
+                const res = await fetch("/api/quiz/generate", {
+                    method: "POST", headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({document: $("document").value, count: 8})
+                });
+                const data = await res.json();
+                if (!res.ok) { flash(data.error, true); return; }
+                showQuizProgress(data.progress);
+                flash(`${data.added} question(s) à choix multiples générée(s) pour « ${data.scope} ».`, false);
+            } catch (err) { flash("Erreur réseau.", true); }
+            finally { btn.disabled = false; }
+        });
+
+        let quizOptions = [];
+
+        const renderQuiz = (card) => {
+            quizOptions = card.options;
+            const opts = card.options.map((o, i) =>
+                `<label class="opt" data-i="${i}"><input type="radio" name="quiz-opt" value="${i}"> ${esc(o)}</label>`
+            ).join("");
+            $("quiz-area").innerHTML =
+                `<div class="answer"><div class="card-question">${esc(card.question)}</div>` +
+                `<div class="options">${opts}</div>` +
+                `<button id="submit-quiz" data-id="${card.id}">Valider</button></div>`;
+            $("submit-quiz").addEventListener("click", submitQuiz);
+        };
+
+        const loadNextQuiz = async () => {
+            $("quiz-area").innerHTML = '<div class="spinner">Chargement…</div>';
+            const res = await fetch("/api/quiz/next", {
+                method: "POST", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({document: $("document").value})
+            });
+            const data = await res.json();
+            showQuizProgress(data.progress);
+            if (!data.card) {
+                $("quiz-area").innerHTML =
+                    '<div class="answer">Aucune question à réviser pour le moment. 🎉<div class="hint">Génère un QCM ou reviens plus tard (répétition espacée).</div></div>';
+                return;
+            }
+            renderQuiz(data.card);
+        };
+
+        const submitQuiz = async (e) => {
+            const cardId = Number(e.target.dataset.id);
+            const checked = document.querySelector('input[name="quiz-opt"]:checked');
+            if (!checked) return;
+            const selected = quizOptions[Number(checked.value)];
+            e.target.disabled = true;
+            const res = await fetch("/api/quiz/answer", {
+                method: "POST", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({card_id: cardId, selected, document: $("document").value})
+            });
+            const data = await res.json();
+            if (!res.ok) { flash(data.error, true); return; }
+            showQuizProgress(data.progress);
+            document.querySelectorAll(".opt").forEach(el => {
+                const value = quizOptions[Number(el.dataset.i)];
+                if (value === data.answer) el.classList.add("correct");
+                else if (el.contains(checked) && !data.correct) el.classList.add("wrong");
+            });
+            const verdict = data.correct
+                ? '<span class="badge good">Bonne réponse ✓</span>'
+                : '<span class="badge bad">Raté ✗</span>';
+            $("quiz-area").insertAdjacentHTML("beforeend",
+                `<div class="answer">${verdict}` +
+                (data.correct ? "" : `<div class="reference"><b>Bonne réponse :</b> ${esc(data.answer)}</div>`) +
+                `<div class="hint">Prochaine révision dans ${data.next_due_in_days} jour(s).</div>` +
+                `<button id="next-quiz" style="margin-top:.8rem">Question suivante</button></div>`);
+            $("next-quiz").addEventListener("click", loadNextQuiz);
+        };
+
+        $("quiz-btn").addEventListener("click", loadNextQuiz);
+
+        const showFlashProgress = (p) => {
+            $("flash-progress").textContent = `À réviser : ${p.due} · Maîtrisées : ${p.learned} / ${p.total}`;
+        };
+
+        const refreshFlashProgress = async () => {
+            const res = await fetch("/api/flashcards/next", {
+                method: "POST", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({document: $("document").value})
+            });
+            const data = await res.json();
+            if (data.progress) showFlashProgress(data.progress);
+        };
+
+        let flashCard = null;
+
+        const renderFlash = (card) => {
+            flashCard = card;
+            $("flash-area").innerHTML =
+                `<div class="answer"><div class="card-question">${esc(card.question)}</div>` +
+                `<button id="reveal-flash">Révéler la réponse</button>` +
+                `<div id="flash-back"></div></div>`;
+            $("reveal-flash").addEventListener("click", revealFlash);
+        };
+
+        const revealFlash = () => {
+            $("reveal-flash").disabled = true;
+            $("flash-back").innerHTML =
+                `<div class="reference"><b>Réponse :</b><br>${md(flashCard.answer)}</div>` +
+                `<div class="hint">Comment t'en es-tu souvenu ?</div>` +
+                `<div class="recall-actions" style="margin-top:.5rem">` +
+                `<button class="rate" data-q="1">Raté</button>` +
+                `<button class="rate" data-q="3">Difficile</button>` +
+                `<button class="rate" data-q="4">Bien</button>` +
+                `<button class="rate" data-q="5">Facile</button></div>`;
+            document.querySelectorAll(".rate").forEach(b =>
+                b.addEventListener("click", () => rateFlash(Number(b.dataset.q))));
+        };
+
+        const rateFlash = async (quality) => {
+            const res = await fetch("/api/flashcards/answer", {
+                method: "POST", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({card_id: flashCard.id, quality, document: $("document").value})
+            });
+            const data = await res.json();
+            if (!res.ok) { flash(data.error, true); return; }
+            showFlashProgress(data.progress);
+            loadNextFlash();
+        };
+
+        const loadNextFlash = async () => {
+            $("flash-area").innerHTML = '<div class="spinner">Chargement…</div>';
+            const res = await fetch("/api/flashcards/next", {
+                method: "POST", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({document: $("document").value})
+            });
+            const data = await res.json();
+            showFlashProgress(data.progress);
+            if (!data.card) {
+                $("flash-area").innerHTML =
+                    '<div class="answer">Aucune carte à réviser pour le moment. 🎉<div class="hint">Génère des questions dans « Interroge-moi », ou reviens plus tard.</div></div>';
+                return;
+            }
+            renderFlash(data.card);
+        };
+
+        $("flash-btn").addEventListener("click", loadNextFlash);
 
         $("upload-form").addEventListener("submit", async (e) => {
             e.preventDefault();

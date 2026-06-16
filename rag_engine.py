@@ -1,3 +1,4 @@
+import random
 import threading
 
 import numpy as np
@@ -7,6 +8,8 @@ import store
 
 FICHE_BUDGET_CHARS = 16000
 MAX_CARDS = 15
+QUIZ_CORRECT_GRADE = 5
+QUIZ_WRONG_GRADE = 1
 
 
 def _within_budget(chunks, budget=FICHE_BUDGET_CHARS):
@@ -97,15 +100,15 @@ class RagEngine:
         if not cards:
             return {"error": "La génération n'a produit aucune carte."}
         added = store.add_cards(document or "corpus", cards)
-        return {"added": added, "scope": scope_label, "progress": store.progress(document)}
+        return {"added": added, "scope": scope_label, "progress": store.progress(document, kind="open")}
 
     def next_card(self, document=None):
-        card = store.next_due_card(document)
+        card = store.next_due_card(document, kind="open")
         if not card:
-            return {"card": None, "progress": store.progress(document)}
+            return {"card": None, "progress": store.progress(document, kind="open")}
         return {
             "card": {"id": card["id"], "question": card["question"], "document": card["document"]},
-            "progress": store.progress(document),
+            "progress": store.progress(document, kind="open"),
         }
 
     def submit_answer(self, card_id, user_answer, document=None):
@@ -119,8 +122,77 @@ class RagEngine:
             "feedback": grade["feedback"],
             "reference": card["answer"],
             "next_due_in_days": schedule["interval"] if schedule else None,
-            "progress": store.progress(document),
+            "progress": store.progress(document, kind="open"),
         }
 
-    def progress(self, document=None):
-        return store.progress(document)
+    def next_flashcard(self, document=None):
+        card = store.next_due_card(document, kind="open")
+        if not card:
+            return {"card": None, "progress": store.progress(document, kind="open")}
+        return {
+            "card": {
+                "id": card["id"],
+                "question": card["question"],
+                "answer": card["answer"],
+                "document": card["document"],
+            },
+            "progress": store.progress(document, kind="open"),
+        }
+
+    def submit_flashcard(self, card_id, quality, document=None):
+        if not store.get_card(card_id):
+            return {"error": "Carte introuvable."}
+        schedule = store.record_review(card_id, quality)
+        return {
+            "next_due_in_days": schedule["interval"] if schedule else None,
+            "progress": store.progress(document, kind="open"),
+        }
+
+    def generate_quiz(self, document=None, count=8):
+        with self._lock:
+            if document:
+                chunks = [chunk for chunk in self._chunks if chunk.source == document]
+            else:
+                chunks = list(self._chunks)
+        if not chunks:
+            return {"error": "Aucun contenu pour ce document."}
+        count = max(1, min(MAX_CARDS, count))
+        scope_label = document or "l'ensemble du corpus"
+        selected = _within_budget(chunks)
+        cards = chatbot.generate_quiz(self._client, selected, count, scope_label)
+        if not cards:
+            return {"error": "La génération n'a produit aucune question."}
+        added = store.add_cards(document or "corpus", cards)
+        return {"added": added, "scope": scope_label, "progress": store.progress(document, kind="quiz")}
+
+    def next_quiz(self, document=None):
+        card = store.next_due_card(document, kind="quiz")
+        if not card:
+            return {"card": None, "progress": store.progress(document, kind="quiz")}
+        options = list(card["options"])
+        random.shuffle(options)
+        return {
+            "card": {
+                "id": card["id"],
+                "question": card["question"],
+                "options": options,
+                "document": card["document"],
+            },
+            "progress": store.progress(document, kind="quiz"),
+        }
+
+    def submit_quiz(self, card_id, selected, document=None):
+        card = store.get_card(card_id)
+        if not card or not card.get("options"):
+            return {"error": "Carte introuvable."}
+        correct = selected == card["answer"]
+        schedule = store.record_review(card_id, QUIZ_CORRECT_GRADE if correct else QUIZ_WRONG_GRADE)
+        return {
+            "correct": correct,
+            "answer": card["answer"],
+            "next_due_in_days": schedule["interval"] if schedule else None,
+            "progress": store.progress(document, kind="quiz"),
+        }
+
+    def progress(self, document=None, kind=None):
+        return store.progress(document, kind=kind)

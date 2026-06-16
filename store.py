@@ -1,5 +1,6 @@
 """Persistance SQLite du deck de cartes de révision et de leur planning SM-2."""
 
+import json
 import sqlite3
 import threading
 from datetime import date
@@ -17,6 +18,22 @@ def _connect(db_path=DB_PATH):
     return conn
 
 
+def _kind_clause(kind):
+    if kind == "open":
+        return "options IS NULL"
+    if kind == "quiz":
+        return "options IS NOT NULL"
+    return None
+
+
+def _row_to_card(row):
+    if row is None:
+        return None
+    card = dict(row)
+    card["options"] = json.loads(card["options"]) if card.get("options") else None
+    return card
+
+
 def init_db(db_path=DB_PATH):
     with _lock, _connect(db_path) as conn:
         conn.execute(
@@ -26,6 +43,7 @@ def init_db(db_path=DB_PATH):
                 document TEXT NOT NULL,
                 question TEXT NOT NULL,
                 answer TEXT NOT NULL,
+                options TEXT,
                 ease REAL NOT NULL DEFAULT 2.5,
                 repetitions INTEGER NOT NULL DEFAULT 0,
                 interval INTEGER NOT NULL DEFAULT 0,
@@ -34,37 +52,56 @@ def init_db(db_path=DB_PATH):
             )
             """
         )
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(cards)")}
+        if "options" not in columns:
+            conn.execute("ALTER TABLE cards ADD COLUMN options TEXT")
 
 
 def add_cards(document, cards, db_path=DB_PATH):
     today = date.today().isoformat()
-    rows = [(document, c["question"], c["answer"], today, today) for c in cards]
+    rows = [
+        (
+            document,
+            c["question"],
+            c["answer"],
+            json.dumps(c["options"]) if c.get("options") else None,
+            today,
+            today,
+        )
+        for c in cards
+    ]
     with _lock, _connect(db_path) as conn:
         conn.executemany(
-            "INSERT INTO cards (document, question, answer, due_date, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO cards (document, question, answer, options, due_date, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             rows,
         )
     return len(rows)
 
 
-def next_due_card(document=None, today=None, db_path=DB_PATH):
+def next_due_card(document=None, kind=None, today=None, db_path=DB_PATH):
     today = today or date.today().isoformat()
-    query = "SELECT * FROM cards WHERE due_date <= ?"
+    clauses = ["due_date <= ?"]
     params = [today]
     if document:
-        query += " AND document = ?"
+        clauses.append("document = ?")
         params.append(document)
-    query += " ORDER BY due_date ASC, id ASC LIMIT 1"
+    kind_clause = _kind_clause(kind)
+    if kind_clause:
+        clauses.append(kind_clause)
+    query = (
+        "SELECT * FROM cards WHERE " + " AND ".join(clauses)
+        + " ORDER BY due_date ASC, id ASC LIMIT 1"
+    )
     with _lock, _connect(db_path) as conn:
         row = conn.execute(query, params).fetchone()
-    return dict(row) if row else None
+    return _row_to_card(row)
 
 
 def get_card(card_id, db_path=DB_PATH):
     with _lock, _connect(db_path) as conn:
         row = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
-    return dict(row) if row else None
+    return _row_to_card(row)
 
 
 def record_review(card_id, quality, today=None, db_path=DB_PATH):
@@ -83,17 +120,28 @@ def record_review(card_id, quality, today=None, db_path=DB_PATH):
     return {"interval": updated.interval, "due_date": due.isoformat()}
 
 
-def progress(document=None, today=None, db_path=DB_PATH):
+def progress(document=None, kind=None, today=None, db_path=DB_PATH):
     today = today or date.today().isoformat()
-    where = ""
+    base = []
     params = []
     if document:
-        where = " WHERE document = ?"
-        params = [document]
+        base.append("document = ?")
+        params.append(document)
+    kind_clause = _kind_clause(kind)
+    if kind_clause:
+        base.append(kind_clause)
+
+    def where(extra=None):
+        clauses = base + ([extra] if extra else [])
+        return (" WHERE " + " AND ".join(clauses)) if clauses else ""
+
     with _lock, _connect(db_path) as conn:
-        total = conn.execute(f"SELECT COUNT(*) AS n FROM cards{where}", params).fetchone()["n"]
-        due_query = f"SELECT COUNT(*) AS n FROM cards{where}{' AND' if where else ' WHERE'} due_date <= ?"
-        due = conn.execute(due_query, params + [today]).fetchone()["n"]
-        learned_query = f"SELECT COUNT(*) AS n FROM cards{where}{' AND' if where else ' WHERE'} repetitions >= ?"
-        learned = conn.execute(learned_query, params + [LEARNED_REPETITIONS]).fetchone()["n"]
+        total = conn.execute(f"SELECT COUNT(*) AS n FROM cards{where()}", params).fetchone()["n"]
+        due = conn.execute(
+            f"SELECT COUNT(*) AS n FROM cards{where('due_date <= ?')}", params + [today]
+        ).fetchone()["n"]
+        learned = conn.execute(
+            f"SELECT COUNT(*) AS n FROM cards{where('repetitions >= ?')}",
+            params + [LEARNED_REPETITIONS],
+        ).fetchone()["n"]
     return {"total": total, "due": due, "learned": learned}
