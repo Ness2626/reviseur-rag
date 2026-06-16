@@ -8,7 +8,9 @@ L'idée n'est pas seulement de retrouver l'information (ça, un chatbot le fait 
 
 - **Q&A** — question en langage naturel, réponse construite à partir des passages les plus proches, avec citation des sources (fichier + page).
 - **Fiche** — synthèse structurée d'un document : idées clés, définitions, à retenir, questions d'auto-test.
-- **Interroge-moi** — le système génère des cartes question/réponse, t'interroge, note ta réponse de 0 à 5 et la replanifie avec l'algorithme SM-2.
+- **Interroge-moi** — le système génère des cartes question/réponse, t'interroge, note ta réponse de 0 à 5 (correction par l'IA) et la replanifie avec l'algorithme SM-2.
+- **QCM** — questions à choix multiples générées depuis tes cours, correction instantanée. Bonne réponse → carte espacée, mauvaise → carte revue dès le lendemain (même planning SM-2).
+- **Flashcards** — révision en autonomie du même jeu de cartes que « Interroge-moi » : on révèle la réponse et on s'auto-note (Raté / Difficile / Bien / Facile), sans appel à l'IA. La note alimente le SM-2.
 
 ## Comment ça marche
 
@@ -51,6 +53,23 @@ Une version ligne de commande existe aussi :
 python chatbot.py
 ```
 
+### Avec Docker
+
+```bash
+docker build -t reviseur-rag .
+docker run -p 5000:5000 -e GROQ_API_KEY=ta_cle_ici reviseur-rag
+```
+
+Le modèle d'embeddings est téléchargé pendant le build, donc le conteneur démarre vite. Pour conserver tes PDF et tes cartes entre deux lancements, monte le dossier `docs/` et la base SQLite (crée d'abord le fichier vide, sinon Docker monterait un dossier à sa place) :
+
+```bash
+touch revision.db
+docker run -p 5000:5000 -e GROQ_API_KEY=ta_cle_ici \
+  -v "$(pwd)/docs:/app/docs" \
+  -v "$(pwd)/revision.db:/app/revision.db" \
+  reviseur-rag
+```
+
 ## Tests
 
 ```bash
@@ -70,6 +89,5 @@ Les tests couvrent l'algorithme SM-2 : calcul des intervalles, réinitialisation
 
 ## Limites connues
 
-- Les modes QCM et Flashcards sont prévus dans l'interface mais pas encore actifs.
 - La recherche se fait en mémoire avec numpy : largement suffisant pour quelques documents, mais à remplacer par un index vectoriel dédié (FAISS) si le corpus grossit.
 - Pas d'authentification ni de comptes : le projet est pensé pour un usage local.

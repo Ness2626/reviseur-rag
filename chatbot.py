@@ -195,6 +195,38 @@ def generate_cards(client, chunks, count, scope_label):
     return [c for c in cards if c.get("question") and c.get("answer")]
 
 
+def generate_quiz(client, chunks, count, scope_label):
+    context = "\n\n---\n\n".join(f"[{chunk.label()}]\n{chunk.text}" for chunk in chunks)
+    prompt = (
+        f"À partir du contexte de cours ci-dessous, génère {count} questions à choix multiples sur "
+        f"« {scope_label} ». Chaque question a exactement 4 propositions dont UNE seule correcte. "
+        "Les distracteurs doivent être plausibles mais faux. Reste strictement fidèle au contenu, "
+        "n'invente rien.\n"
+        'Réponds UNIQUEMENT avec un objet JSON de la forme : '
+        '{"cards": [{"question": "...", "answer": "...", "options": ["...", "...", "...", "..."]}]}. '
+        "Le champ answer doit être identique, au caractère près, à l'une des options.\n\n"
+        f"Contexte :\n{context}"
+    )
+    response = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": "Tu génères des QCM de révision en français au format JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.4,
+        response_format={"type": "json_object"},
+    )
+    data = json.loads(response.choices[0].message.content)
+    cards = []
+    for card in data.get("cards", []):
+        question = card.get("question")
+        answer = card.get("answer")
+        options = card.get("options")
+        if question and answer and isinstance(options, list) and len(options) >= 2 and answer in options:
+            cards.append({"question": question, "answer": answer, "options": options})
+    return cards
+
+
 def grade_answer(client, question, reference, user_answer):
     prompt = (
         "Évalue la réponse d'un étudiant à une question de révision. Compare-la à la réponse de "

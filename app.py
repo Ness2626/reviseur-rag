@@ -90,6 +90,57 @@ def api_study_answer():
     return jsonify(result), (400 if "error" in result else 200)
 
 
+@app.route("/api/flashcards/next", methods=["POST"])
+def api_flashcards_next():
+    data = request.get_json(silent=True) or {}
+    return jsonify(_engine.next_flashcard(data.get("document") or None))
+
+
+@app.route("/api/flashcards/answer", methods=["POST"])
+def api_flashcards_answer():
+    data = request.get_json(silent=True) or {}
+    card_id = data.get("card_id")
+    quality = data.get("quality")
+    if card_id is None or quality is None:
+        return jsonify({"error": "Note manquante."}), 400
+    try:
+        quality = int(quality)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Note invalide."}), 400
+    if not 0 <= quality <= 5:
+        return jsonify({"error": "Note invalide."}), 400
+    result = _engine.submit_flashcard(card_id, quality, data.get("document") or None)
+    return jsonify(result), (400 if "error" in result else 200)
+
+
+@app.route("/api/quiz/generate", methods=["POST"])
+def api_quiz_generate():
+    data = request.get_json(silent=True) or {}
+    document = data.get("document") or None
+    count = data.get("count", 8)
+    if not _engine.has_index():
+        return jsonify({"error": "Aucun document indexé. Ajoutez d'abord un PDF."}), 400
+    result = _engine.generate_quiz(document, count)
+    return jsonify(result), (400 if "error" in result else 200)
+
+
+@app.route("/api/quiz/next", methods=["POST"])
+def api_quiz_next():
+    data = request.get_json(silent=True) or {}
+    return jsonify(_engine.next_quiz(data.get("document") or None))
+
+
+@app.route("/api/quiz/answer", methods=["POST"])
+def api_quiz_answer():
+    data = request.get_json(silent=True) or {}
+    card_id = data.get("card_id")
+    selected = data.get("selected")
+    if card_id is None or selected is None:
+        return jsonify({"error": "Réponse manquante."}), 400
+    result = _engine.submit_quiz(card_id, selected, data.get("document") or None)
+    return jsonify(result), (400 if "error" in result else 200)
+
+
 @app.route("/api/upload", methods=["POST"])
 def api_upload():
     file = request.files.get("pdf")
@@ -104,4 +155,4 @@ def api_upload():
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    app.run(host=os.getenv("HOST", "127.0.0.1"), port=int(os.getenv("PORT", "5000")), debug=False)
