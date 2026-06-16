@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import pickle
 import sys
@@ -168,6 +169,55 @@ def summarize_fiche(client, chunks, scope_label):
         temperature=0.3,
     )
     return response.choices[0].message.content
+
+
+def generate_cards(client, chunks, count, scope_label):
+    context = "\n\n---\n\n".join(f"[{chunk.label()}]\n{chunk.text}" for chunk in chunks)
+    prompt = (
+        f"À partir du contexte de cours ci-dessous, génère {count} questions de révision sur "
+        f"« {scope_label} ». Chaque question doit tester la compréhension d'une notion précise et "
+        "appeler une réponse courte. Reste strictement fidèle au contenu, n'invente rien.\n"
+        'Réponds UNIQUEMENT avec un objet JSON de la forme : '
+        '{"cards": [{"question": "...", "answer": "..."}]}.\n\n'
+        f"Contexte :\n{context}"
+    )
+    response = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": "Tu génères des questions de révision en français au format JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.4,
+        response_format={"type": "json_object"},
+    )
+    data = json.loads(response.choices[0].message.content)
+    cards = data.get("cards", [])
+    return [c for c in cards if c.get("question") and c.get("answer")]
+
+
+def grade_answer(client, question, reference, user_answer):
+    prompt = (
+        "Évalue la réponse d'un étudiant à une question de révision. Compare-la à la réponse de "
+        "référence. Note de 0 à 5 (0 = totalement faux, 3 = correct dans l'ensemble, 5 = parfait). "
+        "Sois juste mais exigeant.\n"
+        'Réponds UNIQUEMENT avec un objet JSON : {"score": <0-5>, "feedback": "<une à deux phrases>"}.\n\n'
+        f"Question : {question}\n"
+        f"Réponse de référence : {reference}\n"
+        f"Réponse de l'étudiant : {user_answer}"
+    )
+    response = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": "Tu es un correcteur pédagogique qui évalue des réponses en français au format JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.1,
+        response_format={"type": "json_object"},
+    )
+    data = json.loads(response.choices[0].message.content)
+    score = int(data.get("score", 0))
+    score = max(0, min(5, score))
+    return {"score": score, "feedback": data.get("feedback", "")}
 
 
 def main():

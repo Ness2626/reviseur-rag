@@ -4,6 +4,9 @@
 # Index persisté (regénéré au démarrage)
 index_cache.pkl
 
+# Base SQLite des cartes de révision
+revision.db
+
 # Documents uploadés
 docs/*
 

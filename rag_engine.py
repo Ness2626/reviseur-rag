@@ -3,8 +3,10 @@ import threading
 import numpy as np
 
 import chatbot
+import store
 
 FICHE_BUDGET_CHARS = 16000
+MAX_CARDS = 15
 
 
 def _within_budget(chunks, budget=FICHE_BUDGET_CHARS):
@@ -79,3 +81,46 @@ class RagEngine:
         selected = _within_budget(chunks)
         fiche = chatbot.summarize_fiche(self._client, selected, scope_label)
         return {"fiche": fiche, "scope": scope_label}
+
+    def generate_cards(self, document=None, count=8):
+        with self._lock:
+            if document:
+                chunks = [chunk for chunk in self._chunks if chunk.source == document]
+            else:
+                chunks = list(self._chunks)
+        if not chunks:
+            return {"error": "Aucun contenu pour ce document."}
+        count = max(1, min(MAX_CARDS, count))
+        scope_label = document or "l'ensemble du corpus"
+        selected = _within_budget(chunks)
+        cards = chatbot.generate_cards(self._client, selected, count, scope_label)
+        if not cards:
+            return {"error": "La génération n'a produit aucune carte."}
+        added = store.add_cards(document or "corpus", cards)
+        return {"added": added, "scope": scope_label, "progress": store.progress(document)}
+
+    def next_card(self, document=None):
+        card = store.next_due_card(document)
+        if not card:
+            return {"card": None, "progress": store.progress(document)}
+        return {
+            "card": {"id": card["id"], "question": card["question"], "document": card["document"]},
+            "progress": store.progress(document),
+        }
+
+    def submit_answer(self, card_id, user_answer, document=None):
+        card = store.get_card(card_id)
+        if not card:
+            return {"error": "Carte introuvable."}
+        grade = chatbot.grade_answer(self._client, card["question"], card["answer"], user_answer)
+        schedule = store.record_review(card_id, grade["score"])
+        return {
+            "score": grade["score"],
+            "feedback": grade["feedback"],
+            "reference": card["answer"],
+            "next_due_in_days": schedule["interval"] if schedule else None,
+            "progress": store.progress(document),
+        }
+
+    def progress(self, document=None):
+        return store.progress(document)
