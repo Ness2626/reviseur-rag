@@ -1,0 +1,18 @@
+# Fichiers inutiles ou sensibles à ne PAS copier dans l'image Docker.
+# Réduit la taille du contexte de build et évite de fuiter des secrets.
+
+.env
+.git
+__pycache__/
+*.pyc
+.pytest_cache/
+venv/
+venv-rag/
+*.egg-info/
+
+# État local regénéré au démarrage : pas besoin de l'embarquer.
+index_cache.pkl
+revision.db
+
+# PDF uploadés en local (l'utilisateur fournit les siens via le volume / l'UI).
+docs/*
