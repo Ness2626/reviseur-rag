@@ -147,6 +147,29 @@ def answer(client, question, chunks):
     return response.choices[0].message.content
 
 
+def summarize_fiche(client, chunks, scope_label):
+    context = "\n\n---\n\n".join(f"[{chunk.label()}]\n{chunk.text}" for chunk in chunks)
+    prompt = (
+        "À partir du contexte de cours ci-dessous, rédige une fiche de révision claire et structurée "
+        f"sur « {scope_label} ». Utilise du Markdown avec ces sections :\n"
+        "## Idées clés (liste de 4 à 8 points essentiels)\n"
+        "## Définitions (terme — définition courte, pour les notions importantes)\n"
+        "## À retenir (l'essentiel à mémoriser pour un examen)\n"
+        "## Pour t'auto-tester (3 questions ouvertes sans les réponses)\n"
+        "Reste fidèle au contenu, n'invente rien. Si le contexte est insuffisant, dis-le.\n\n"
+        f"Contexte :\n{context}"
+    )
+    response = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": "Tu es un assistant pédagogique qui rédige des fiches de révision en français."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.3,
+    )
+    return response.choices[0].message.content
+
+
 def main():
     load_dotenv()
     api_key = os.getenv("GROQ_API_KEY")

@@ -49,6 +49,17 @@ def api_ask():
     return jsonify(_engine.ask(question, document))
 
 
+@app.route("/api/fiche", methods=["POST"])
+def api_fiche():
+    data = request.get_json(silent=True) or {}
+    document = data.get("document") or None
+    if not _engine.has_index():
+        return jsonify({"error": "Aucun document indexé. Ajoutez d'abord un PDF."}), 400
+    result = _engine.generate_fiche(document)
+    status = 400 if "error" in result else 200
+    return jsonify(result), status
+
+
 @app.route("/api/upload", methods=["POST"])
 def api_upload():
     file = request.files.get("pdf")
