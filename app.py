@@ -39,6 +39,15 @@ def api_documents():
     return jsonify({"documents": _engine.documents()})
 
 
+@app.route("/api/stats", methods=["POST"])
+def api_stats():
+    data = request.get_json(silent=True) or {}
+    document = data.get("document") or None
+    stats = _engine.progress(document)
+    stats["documents"] = len(_engine.documents())
+    return jsonify(stats)
+
+
 @app.route("/api/ask", methods=["POST"])
 def api_ask():
     data = request.get_json(silent=True) or {}
