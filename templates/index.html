@@ -218,6 +218,17 @@
         .opt input { margin: 0; accent-color: var(--accent); }
         .opt.correct { border-color: var(--good); background: var(--good-soft); }
         .opt.wrong { border-color: var(--bad); background: var(--bad-soft); }
+        .opt .mark { margin-left: auto; display: inline-flex; flex: none; }
+        .opt .mark svg { width: 18px; height: 18px; }
+        .opt.correct .mark { color: var(--good); }
+        .opt.wrong .mark { color: var(--bad); }
+
+        .empty {
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+            gap: .9rem; padding: 2.5rem 1rem; color: var(--muted);
+        }
+        .empty svg { width: 40px; height: 40px; opacity: .7; }
+        .empty p { margin: 0; font-size: .95rem; max-width: 32ch; }
         button.rate { background: var(--field); color: var(--ink); border: 1px solid var(--line); }
         button.rate:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-dark); }
 
@@ -297,7 +308,6 @@
             <div class="progress" id="recall-progress">—</div>
             <div class="recall-actions">
                 <button class="ghost" id="gen-cards-btn">Générer des questions</button>
-                <button id="study-btn">Réviser</button>
             </div>
             <div class="hint">Génère un jeu de questions depuis tes cours, puis réponds de mémoire : l'IA te note et reprogramme chaque carte (répétition espacée).</div>
             <div id="study-area"></div>
@@ -307,7 +317,6 @@
             <div class="progress" id="quiz-progress">—</div>
             <div class="recall-actions">
                 <button class="ghost" id="gen-quiz-btn">Générer un QCM</button>
-                <button id="quiz-btn">Démarrer</button>
             </div>
             <div class="hint">Questions à choix multiples (une ou plusieurs bonnes réponses) générées depuis tes cours. Bonne ou mauvaise réponse, la carte est replanifiée (répétition espacée).</div>
             <div id="quiz-area"></div>
@@ -315,9 +324,6 @@
 
         <div class="panel" id="panel-flashcards">
             <div class="progress" id="flash-progress">—</div>
-            <div class="recall-actions">
-                <button id="flash-btn">Réviser</button>
-            </div>
             <div class="hint">Même jeu de cartes que « Interroge-moi », révisé en autonomie : révèle la réponse et note-toi (pas de correction IA). Génère d'abord des questions dans l'onglet « Interroge-moi ».</div>
             <div id="flash-area"></div>
         </div>
@@ -387,6 +393,15 @@
             } catch (err) { /* stats non bloquantes */ }
         };
 
+        const EMPTY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+        const emptyState = (areaId, message, cta) => {
+            const btn = cta ? `<button class="cta-empty">${cta.label}</button>` : "";
+            $(areaId).innerHTML = `<div class="empty">${EMPTY_ICON}<p>${message}</p>${btn}</div>`;
+            if (cta) $(areaId).querySelector(".cta-empty").addEventListener("click", cta.onClick);
+        };
+        const MARK_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        const MARK_KO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
         document.querySelectorAll(".tab").forEach(tab => {
             tab.addEventListener("click", () => {
                 if (tab.disabled) return;
@@ -395,9 +410,9 @@
                 tab.classList.add("active");
                 $("panel-" + tab.dataset.mode).classList.add("active");
                 $("result").innerHTML = "";
-                if (tab.dataset.mode === "recall") { $("study-area").innerHTML = ""; refreshProgress(); }
-                if (tab.dataset.mode === "quiz") { $("quiz-area").innerHTML = ""; refreshQuizProgress(); }
-                if (tab.dataset.mode === "flashcards") { $("flash-area").innerHTML = ""; refreshFlashProgress(); }
+                if (tab.dataset.mode === "recall") loadNextCard();
+                if (tab.dataset.mode === "quiz") loadNextQuiz();
+                if (tab.dataset.mode === "flashcards") loadNextFlash();
             });
         });
 
@@ -446,31 +461,23 @@
             refreshStats();
         };
 
-        const refreshProgress = async () => {
-            const res = await fetch("/api/study/next", {
-                method: "POST", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({document: $("document").value})
-            });
-            const data = await res.json();
-            if (data.progress) showProgress(data.progress);
-        };
-
-        $("gen-cards-btn").addEventListener("click", async () => {
+        const generateCards = async () => {
             const btn = $("gen-cards-btn");
             btn.disabled = true;
-            flash("Génération des questions…", false);
+            $("study-area").innerHTML = '<div class="spinner">Génération des questions…</div>';
             try {
                 const res = await fetch("/api/cards/generate", {
                     method: "POST", headers: {"Content-Type": "application/json"},
                     body: JSON.stringify({document: $("document").value, count: 8})
                 });
                 const data = await res.json();
-                if (!res.ok) { flash(data.error, true); return; }
-                showProgress(data.progress);
+                if (!res.ok) { flash(data.error, true); $("study-area").innerHTML = ""; return; }
                 flash(`${data.added} question(s) générée(s) pour « ${data.scope} ».`, false);
-            } catch (err) { flash("Erreur réseau.", true); }
+                await loadNextCard();
+            } catch (err) { flash("Erreur réseau.", true); $("study-area").innerHTML = ""; }
             finally { btn.disabled = false; }
-        });
+        };
+        $("gen-cards-btn").addEventListener("click", generateCards);
 
         const renderCard = (card) => {
             $("study-area").innerHTML =
@@ -491,8 +498,9 @@
             const data = await res.json();
             showProgress(data.progress);
             if (!data.card) {
-                $("study-area").innerHTML =
-                    '<div class="answer">Aucune carte à réviser pour le moment. 🎉<div class="hint">Génère des questions ou reviens plus tard (répétition espacée).</div></div>';
+                emptyState("study-area",
+                    "Aucune question à réviser pour l'instant.",
+                    {label: "Générer des questions", onClick: generateCards});
                 return;
             }
             renderCard(data.card);
@@ -520,38 +528,29 @@
             $("next-card").addEventListener("click", loadNextCard);
         };
 
-        $("study-btn").addEventListener("click", loadNextCard);
 
         const showQuizProgress = (p) => {
             $("quiz-progress").textContent = `À réviser : ${p.due} · Maîtrisées : ${p.learned} / ${p.total}`;
             refreshStats();
         };
 
-        const refreshQuizProgress = async () => {
-            const res = await fetch("/api/quiz/next", {
-                method: "POST", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({document: $("document").value})
-            });
-            const data = await res.json();
-            if (data.progress) showQuizProgress(data.progress);
-        };
-
-        $("gen-quiz-btn").addEventListener("click", async () => {
+        const generateQuiz = async () => {
             const btn = $("gen-quiz-btn");
             btn.disabled = true;
-            flash("Génération du QCM…", false);
+            $("quiz-area").innerHTML = '<div class="spinner">Génération du QCM…</div>';
             try {
                 const res = await fetch("/api/quiz/generate", {
                     method: "POST", headers: {"Content-Type": "application/json"},
                     body: JSON.stringify({document: $("document").value, count: 8})
                 });
                 const data = await res.json();
-                if (!res.ok) { flash(data.error, true); return; }
-                showQuizProgress(data.progress);
-                flash(`${data.added} question(s) à choix multiples générée(s) pour « ${data.scope} ».`, false);
-            } catch (err) { flash("Erreur réseau.", true); }
+                if (!res.ok) { flash(data.error, true); $("quiz-area").innerHTML = ""; return; }
+                flash(`${data.added} question(s) générée(s) pour « ${data.scope} ».`, false);
+                await loadNextQuiz();
+            } catch (err) { flash("Erreur réseau.", true); $("quiz-area").innerHTML = ""; }
             finally { btn.disabled = false; }
-        });
+        };
+        $("gen-quiz-btn").addEventListener("click", generateQuiz);
 
         let quizOptions = [];
 
@@ -577,8 +576,9 @@
             const data = await res.json();
             showQuizProgress(data.progress);
             if (!data.card) {
-                $("quiz-area").innerHTML =
-                    '<div class="answer">Aucune question à réviser pour le moment. 🎉<div class="hint">Génère un QCM ou reviens plus tard (répétition espacée).</div></div>';
+                emptyState("quiz-area",
+                    "Aucune question à réviser pour l'instant.",
+                    {label: "Générer un QCM", onClick: generateQuiz});
                 return;
             }
             renderQuiz(data.card);
@@ -601,12 +601,16 @@
             const chosen = new Set(selected);
             document.querySelectorAll(".opt").forEach(el => {
                 const value = quizOptions[Number(el.dataset.i)];
-                if (answers.has(value)) el.classList.add("correct");
-                else if (chosen.has(value)) el.classList.add("wrong");
+                const input = el.querySelector("input");
+                if (input) input.disabled = true;
+                let mark = "";
+                if (answers.has(value)) { el.classList.add("correct"); mark = MARK_OK; }
+                else if (chosen.has(value)) { el.classList.add("wrong"); mark = MARK_KO; }
+                if (mark) el.insertAdjacentHTML("beforeend", `<span class="mark">${mark}</span>`);
             });
             const verdict = data.correct
-                ? '<span class="badge good">Bonne réponse ✓</span>'
-                : '<span class="badge bad">Raté ✗</span>';
+                ? '<span class="badge good">Bonne réponse</span>'
+                : '<span class="badge bad">Raté</span>';
             const answersLabel = (data.answers || []).join(" · ");
             $("quiz-area").insertAdjacentHTML("beforeend",
                 `<div class="answer">${verdict}` +
@@ -617,20 +621,10 @@
             $("next-quiz").addEventListener("click", loadNextQuiz);
         };
 
-        $("quiz-btn").addEventListener("click", loadNextQuiz);
 
         const showFlashProgress = (p) => {
             $("flash-progress").textContent = `À réviser : ${p.due} · Maîtrisées : ${p.learned} / ${p.total}`;
             refreshStats();
-        };
-
-        const refreshFlashProgress = async () => {
-            const res = await fetch("/api/flashcards/next", {
-                method: "POST", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({document: $("document").value})
-            });
-            const data = await res.json();
-            if (data.progress) showFlashProgress(data.progress);
         };
 
         let flashCard = null;
@@ -678,14 +672,13 @@
             const data = await res.json();
             showFlashProgress(data.progress);
             if (!data.card) {
-                $("flash-area").innerHTML =
-                    '<div class="answer">Aucune carte à réviser pour le moment. 🎉<div class="hint">Génère des questions dans « Interroge-moi », ou reviens plus tard.</div></div>';
+                emptyState("flash-area",
+                    "Aucune carte à réviser. Génère d'abord des questions dans « Interroge-moi ».");
                 return;
             }
             renderFlash(data.card);
         };
 
-        $("flash-btn").addEventListener("click", loadNextFlash);
 
         $("upload-form").addEventListener("submit", async (e) => {
             e.preventDefault();
