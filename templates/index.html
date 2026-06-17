@@ -229,6 +229,16 @@
         }
         .empty svg { width: 40px; height: 40px; opacity: .7; }
         .empty p { margin: 0; font-size: .95rem; max-width: 32ch; }
+
+        .src-chip {
+            display: inline-flex; align-items: center; gap: .35rem; font-size: .75rem;
+            color: var(--accent-dark); background: var(--accent-soft); border-radius: 999px;
+            padding: .2rem .6rem; margin-bottom: .7rem; max-width: 100%;
+        }
+        .src-chip svg { width: 13px; height: 13px; flex: none; }
+        .src-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .scope-line { color: var(--muted); font-size: .8rem; margin: -.4rem 0 1.1rem; }
+        .scope-line b { color: var(--ink); font-weight: 600; }
         button.rate { background: var(--field); color: var(--ink); border: 1px solid var(--line); }
         button.rate:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-dark); }
 
@@ -284,11 +294,12 @@
 
       <main class="main">
         <div class="stats-row">
-            <div class="stat due"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div><div class="stat-val" id="stat-due">—</div><div class="stat-lbl">À réviser</div></div></div>
-            <div class="stat good"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div><div class="stat-val" id="stat-learned">—</div><div class="stat-lbl">Maîtrisées</div></div></div>
-            <div class="stat"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div><div><div class="stat-val" id="stat-total">—</div><div class="stat-lbl">Cartes</div></div></div>
-            <div class="stat"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div><div><div class="stat-val" id="stat-docs">—</div><div class="stat-lbl">Documents</div></div></div>
+            <div class="stat due" title="Cartes dues aujourd'hui — toutes activités (QCM + questions), sur le périmètre sélectionné"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div><div class="stat-val" id="stat-due">—</div><div class="stat-lbl">À réviser</div></div></div>
+            <div class="stat good" title="Cartes revues plusieurs fois avec succès (répétition espacée)"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div><div class="stat-val" id="stat-learned">—</div><div class="stat-lbl">Maîtrisées</div></div></div>
+            <div class="stat" title="Nombre total de cartes (QCM + questions) sur le périmètre sélectionné"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div><div><div class="stat-val" id="stat-total">—</div><div class="stat-lbl">Cartes</div></div></div>
+            <div class="stat" title="Nombre de PDF indexés dans le corpus"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div><div><div class="stat-val" id="stat-docs">—</div><div class="stat-lbl">Documents</div></div></div>
         </div>
+        <div class="scope-line">Statistiques pour : <b id="scope-label">tout le corpus</b></div>
 
         <div class="card">
 
@@ -380,6 +391,7 @@
         };
 
         const refreshStats = async () => {
+            $("scope-label").textContent = $("document").value || "tout le corpus";
             try {
                 const res = await fetch("/api/stats", {
                     method: "POST", headers: {"Content-Type": "application/json"},
@@ -401,6 +413,11 @@
         };
         const MARK_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
         const MARK_KO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+        const DOC_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>';
+        const sourceChip = (doc) => {
+            const label = (!doc || doc === "corpus") ? "Tout le corpus" : doc;
+            return `<div class="src-chip" title="Source de cette carte">${DOC_ICON}<span>${esc(label)}</span></div>`;
+        };
 
         document.querySelectorAll(".tab").forEach(tab => {
             tab.addEventListener("click", () => {
@@ -457,7 +474,7 @@
 
         const showProgress = (p) => {
             $("recall-progress").textContent =
-                `À réviser : ${p.due} · Maîtrisées : ${p.learned} / ${p.total}`;
+                `Questions — à réviser : ${p.due} · maîtrisées : ${p.learned} / ${p.total}`;
             refreshStats();
         };
 
@@ -481,7 +498,7 @@
 
         const renderCard = (card) => {
             $("study-area").innerHTML =
-                `<div class="answer"><div class="card-question">${card.question}</div>` +
+                `<div class="answer">${sourceChip(card.document)}<div class="card-question">${card.question}</div>` +
                 `<textarea id="user-answer" placeholder="Ta réponse de mémoire…" autofocus></textarea>` +
                 `<button id="submit-answer" data-id="${card.id}">Valider</button></div>`;
             $("submit-answer").addEventListener("click", submitAnswer);
@@ -530,7 +547,7 @@
 
 
         const showQuizProgress = (p) => {
-            $("quiz-progress").textContent = `À réviser : ${p.due} · Maîtrisées : ${p.learned} / ${p.total}`;
+            $("quiz-progress").textContent = `QCM — à réviser : ${p.due} · maîtrisées : ${p.learned} / ${p.total}`;
             refreshStats();
         };
 
@@ -560,7 +577,7 @@
                 `<label class="opt" data-i="${i}"><input type="checkbox" name="quiz-opt" value="${i}"> ${esc(o)}</label>`
             ).join("");
             $("quiz-area").innerHTML =
-                `<div class="answer"><div class="card-question">${esc(card.question)}</div>` +
+                `<div class="answer">${sourceChip(card.document)}<div class="card-question">${esc(card.question)}</div>` +
                 `<div class="hint">Coche toutes les bonnes réponses (une ou plusieurs).</div>` +
                 `<div class="options">${opts}</div>` +
                 `<button id="submit-quiz" data-id="${card.id}">Valider</button></div>`;
@@ -623,7 +640,7 @@
 
 
         const showFlashProgress = (p) => {
-            $("flash-progress").textContent = `À réviser : ${p.due} · Maîtrisées : ${p.learned} / ${p.total}`;
+            $("flash-progress").textContent = `Flashcards — à réviser : ${p.due} · maîtrisées : ${p.learned} / ${p.total}`;
             refreshStats();
         };
 
@@ -632,7 +649,7 @@
         const renderFlash = (card) => {
             flashCard = card;
             $("flash-area").innerHTML =
-                `<div class="answer"><div class="card-question">${esc(card.question)}</div>` +
+                `<div class="answer">${sourceChip(card.document)}<div class="card-question">${esc(card.question)}</div>` +
                 `<button id="reveal-flash">Révéler la réponse</button>` +
                 `<div id="flash-back"></div></div>`;
             $("reveal-flash").addEventListener("click", revealFlash);
