@@ -6,7 +6,8 @@
     <title>Réviseur RAG</title>
     <style>
         :root {
-            --bg: #f8fafc;
+            --bg: #f1f5f9;
+            --bg-grad: radial-gradient(1200px 600px at 70% -10%, #e0e7ff 0%, transparent 55%), var(--bg);
             --card: #ffffff;
             --ink: #0f172a;
             --muted: #64748b;
@@ -14,62 +15,139 @@
             --accent: #4f46e5;
             --accent-dark: #4338ca;
             --accent-soft: #eef2ff;
+            --good: #16a34a; --good-soft: #dcfce7;
+            --mid: #d97706;
+            --bad: #dc2626; --bad-soft: #fee2e2;
+            --field: #ffffff;
+            --shadow: 0 1px 2px rgba(15,23,42,.05), 0 8px 24px -16px rgba(15,23,42,.18);
+            --radius: 14px;
+        }
+        [data-theme="dark"] {
+            --bg: #0b1120;
+            --bg-grad: radial-gradient(1200px 600px at 70% -10%, #1e1b4b 0%, transparent 55%), var(--bg);
+            --card: #131c31;
+            --ink: #e2e8f0;
+            --muted: #94a3b8;
+            --line: #26334d;
+            --accent: #818cf8;
+            --accent-dark: #a5b4fc;
+            --accent-soft: #1e2640;
+            --good: #22c55e; --good-soft: #11271b;
+            --mid: #f59e0b;
+            --bad: #f87171; --bad-soft: #2b1517;
+            --field: #0f1729;
+            --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px -18px rgba(0,0,0,.7);
         }
         * { box-sizing: border-box; }
         body {
             font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-            background: var(--bg); color: var(--ink);
-            max-width: 820px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem;
-            line-height: 1.55;
+            background: var(--bg-grad); background-attachment: fixed; color: var(--ink);
+            max-width: 1140px; margin: 0 auto; padding: 1.75rem 1.25rem 4rem;
+            line-height: 1.55; min-height: 100vh;
+            transition: background-color .25s, color .25s;
         }
-        header { margin-bottom: 1.5rem; }
-        h1 { font-size: 1.6rem; margin: 0; letter-spacing: -.02em; }
-        .subtitle { color: var(--muted); font-size: .95rem; margin-top: .25rem; }
-        .corpus { color: var(--muted); font-size: .82rem; margin-top: .6rem; }
-        .corpus b { color: var(--ink); font-weight: 600; }
+        .app { display: grid; grid-template-columns: 250px 1fr; gap: 1.4rem; align-items: start; }
 
-        .tabs { display: flex; gap: .4rem; margin: 1.4rem 0 1.2rem; flex-wrap: wrap; }
-        .tab {
-            padding: .45rem 1rem; border: 1px solid var(--line); border-radius: 999px;
-            background: var(--card); cursor: pointer; font-size: .9rem; color: var(--ink);
-            transition: all .15s;
+        .sidebar {
+            position: sticky; top: 1.5rem; display: flex; flex-direction: column; gap: 1rem;
+            background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+            padding: 1.1rem; box-shadow: var(--shadow);
         }
-        .tab:hover:not(:disabled) { border-color: var(--accent); }
-        .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-        .tab:disabled { color: #cbd5e1; cursor: not-allowed; }
+        .brand { display: flex; align-items: center; gap: .65rem; }
+        .brand .logo {
+            width: 40px; height: 40px; border-radius: 12px; flex: none;
+            background: linear-gradient(135deg, var(--accent), #7c3aed);
+            display: grid; place-items: center; color: #fff;
+            box-shadow: 0 6px 16px -6px var(--accent);
+        }
+        .brand .logo svg { width: 22px; height: 22px; }
+        .brand-name { font-size: 1.12rem; font-weight: 700; letter-spacing: -.02em; }
+        .brand-sub { color: var(--muted); font-size: .76rem; }
+
+        .tabs { display: flex; flex-direction: column; gap: .25rem; }
+        .tab {
+            display: flex; align-items: center; gap: .65rem; width: 100%; text-align: left;
+            padding: .6rem .75rem; border: 1px solid transparent; border-radius: 10px;
+            background: transparent; cursor: pointer; font-size: .92rem; color: var(--muted);
+            transition: all .15s; font-weight: 500;
+        }
+        .tab svg { width: 18px; height: 18px; flex: none; }
+        .tab:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-dark); }
+        .tab.active { background: var(--accent); color: #fff; box-shadow: 0 6px 16px -8px var(--accent); }
+        .tab:disabled { opacity: .45; cursor: not-allowed; }
+
+        .side-block { display: flex; flex-direction: column; gap: .4rem; padding-top: .9rem; border-top: 1px solid var(--line); }
+        .side-block select, .side-block input[type=file], .side-block button { width: 100%; }
+        .side-foot { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding-top: .9rem; border-top: 1px solid var(--line); }
+        .corpus { color: var(--muted); font-size: .82rem; }
+        .corpus b { color: var(--ink); font-weight: 700; }
+        .theme-toggle {
+            flex: none; width: 38px; height: 38px; padding: 0; border-radius: 10px;
+            background: var(--field); border: 1px solid var(--line); color: var(--ink);
+            display: grid; place-items: center; cursor: pointer; transition: all .15s;
+        }
+        .theme-toggle svg { width: 18px; height: 18px; }
+        .theme-toggle:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: .8rem; margin-bottom: 1.25rem; }
+        .stat {
+            display: flex; align-items: center; gap: .7rem; background: var(--card);
+            border: 1px solid var(--line); border-radius: var(--radius); padding: .9rem 1rem; box-shadow: var(--shadow);
+        }
+        .stat-ic {
+            width: 38px; height: 38px; border-radius: 10px; flex: none; display: grid; place-items: center;
+            background: var(--accent-soft); color: var(--accent-dark);
+        }
+        .stat-ic svg { width: 19px; height: 19px; }
+        .stat.due .stat-ic { background: var(--bad-soft); color: var(--bad); }
+        .stat.good .stat-ic { background: var(--good-soft); color: var(--good); }
+        .stat-val { font-size: 1.45rem; font-weight: 700; line-height: 1.1; letter-spacing: -.02em; }
+        .stat-lbl { color: var(--muted); font-size: .78rem; }
+
+        @media (max-width: 760px) {
+            .app { grid-template-columns: 1fr; }
+            .sidebar { position: static; }
+            .tabs { flex-direction: row; flex-wrap: wrap; }
+            .tab { width: auto; }
+            .stats-row { grid-template-columns: repeat(2, 1fr); }
+        }
 
         .card {
-            background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-            padding: 1.25rem 1.4rem; box-shadow: 0 1px 2px rgba(15,23,42,.04);
-            margin-bottom: 1.25rem;
+            background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+            padding: 1.3rem 1.45rem; box-shadow: var(--shadow); margin-bottom: 1.25rem;
         }
-        .controls { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+        .controls { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.1rem; }
         label.field { color: var(--muted); font-size: .85rem; }
         select, input[type=text] {
             padding: .6rem .7rem; font-size: .95rem; border: 1px solid var(--line);
-            border-radius: 9px; background: #fff; color: var(--ink); font-family: inherit;
+            border-radius: 10px; background: var(--field); color: var(--ink); font-family: inherit;
+            transition: border-color .15s, box-shadow .15s;
         }
-        select:focus, input[type=text]:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+        select:focus, input[type=text]:focus, textarea:focus {
+            outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+        }
 
         form.row { display: flex; gap: .6rem; }
         input[type=text] { flex: 1; }
         button {
-            padding: .6rem 1.3rem; font-size: .95rem; font-weight: 500; border: 0;
-            border-radius: 9px; background: var(--accent); color: #fff; cursor: pointer;
-            transition: background .15s;
+            padding: .6rem 1.3rem; font-size: .95rem; font-weight: 600; border: 0;
+            border-radius: 10px; background: var(--accent); color: #fff; cursor: pointer;
+            transition: background .15s, transform .1s, box-shadow .15s;
         }
         button:hover { background: var(--accent-dark); }
-        button.ghost { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+        button:active { transform: translateY(1px); }
+        button.ghost { background: transparent; color: var(--accent-dark); border: 1px solid var(--accent); }
         button.ghost:hover { background: var(--accent-soft); }
         button:disabled { opacity: .55; cursor: progress; }
 
-        .panel { display: none; }
+        .panel { display: none; animation: fade .2s ease; }
         .panel.active { display: block; }
+        @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
         .output { margin-top: 1.1rem; }
         .answer {
-            background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-            padding: 1.1rem 1.4rem; box-shadow: 0 1px 2px rgba(15,23,42,.04);
+            background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+            padding: 1.15rem 1.45rem; box-shadow: var(--shadow); animation: fade .2s ease;
         }
         .answer h2 { font-size: 1.05rem; margin: 1.1rem 0 .5rem; }
         .answer h2:first-child { margin-top: 0; }
@@ -80,79 +158,128 @@
         .sources { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--line); font-size: .82rem; color: var(--muted); }
         .sources span {
             display: inline-block; background: var(--accent-soft); color: var(--accent-dark);
-            border-radius: 5px; padding: .12rem .55rem; margin: .15rem .25rem .15rem 0; font-size: .8rem;
+            border-radius: 6px; padding: .15rem .6rem; margin: .15rem .25rem .15rem 0; font-size: .8rem;
         }
         .hint { color: var(--muted); font-size: .85rem; margin-top: .5rem; }
-        .spinner { color: var(--muted); font-style: italic; padding: 1rem 0; }
 
-        .flash { border-radius: 9px; padding: .65rem .95rem; margin-bottom: 1rem; font-size: .9rem; }
-        .flash.ok { background: #dcfce7; color: #166534; }
-        .flash.error { background: #fee2e2; color: #991b1b; }
+        .spinner { color: var(--muted); padding: 1rem 0; display: flex; align-items: center; gap: .6rem; }
+        .spinner::before {
+            content: ""; width: 16px; height: 16px; border-radius: 50%; flex: none;
+            border: 2px solid var(--line); border-top-color: var(--accent); animation: spin .7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .toast-container {
+            position: fixed; top: 1rem; right: 1rem; z-index: 50;
+            display: flex; flex-direction: column; gap: .5rem; max-width: min(360px, 90vw);
+        }
+        .toast {
+            display: flex; align-items: flex-start; gap: .55rem; padding: .7rem .9rem;
+            border-radius: 11px; font-size: .9rem; color: var(--ink); background: var(--card);
+            border: 1px solid var(--line); box-shadow: var(--shadow);
+            border-left: 4px solid var(--accent); animation: slide-in .25s ease;
+        }
+        .toast svg { width: 17px; height: 17px; flex: none; margin-top: 1px; }
+        .toast.ok { border-left-color: var(--good); }
+        .toast.ok svg { color: var(--good); }
+        .toast.error { border-left-color: var(--bad); }
+        .toast.error svg { color: var(--bad); }
+        .toast.leaving { animation: slide-out .25s ease forwards; }
+        @keyframes slide-in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+        @keyframes slide-out { to { opacity: 0; transform: translateX(20px); } }
 
         .progress {
             display: inline-block; background: var(--accent-soft); color: var(--accent-dark);
-            border-radius: 999px; padding: .3rem .9rem; font-size: .82rem; font-weight: 500; margin-bottom: .9rem;
+            border-radius: 999px; padding: .35rem .95rem; font-size: .82rem; font-weight: 600; margin-bottom: .9rem;
         }
         .recall-actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: .4rem; }
         textarea {
             width: 100%; min-height: 90px; padding: .7rem .8rem; font-size: .95rem; font-family: inherit;
-            border: 1px solid var(--line); border-radius: 9px; resize: vertical; margin: .3rem 0 .6rem;
+            border: 1px solid var(--line); border-radius: 10px; resize: vertical; margin: .3rem 0 .6rem;
+            background: var(--field); color: var(--ink);
         }
-        textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
-        .card-question { font-size: 1.05rem; font-weight: 600; margin: .2rem 0 .8rem; }
+        .card-question { font-size: 1.08rem; font-weight: 600; margin: .2rem 0 .8rem; }
         .badge {
-            display: inline-block; border-radius: 999px; padding: .2rem .75rem; font-size: .82rem;
-            font-weight: 600; color: #fff; margin-right: .5rem;
+            display: inline-block; border-radius: 999px; padding: .2rem .8rem; font-size: .82rem;
+            font-weight: 700; color: #fff; margin-right: .5rem;
         }
-        .badge.good { background: #16a34a; }
-        .badge.mid { background: #d97706; }
-        .badge.bad { background: #dc2626; }
+        .badge.good { background: var(--good); }
+        .badge.mid { background: var(--mid); }
+        .badge.bad { background: var(--bad); }
         .reference { margin-top: .7rem; padding-top: .6rem; border-top: 1px solid var(--line); font-size: .9rem; }
         .reference b { color: var(--muted); }
 
         .options { display: flex; flex-direction: column; gap: .5rem; margin: .7rem 0 1rem; }
         .opt {
-            display: flex; align-items: center; gap: .6rem; padding: .6rem .85rem;
-            border: 1px solid var(--line); border-radius: 9px; cursor: pointer; transition: all .12s;
+            display: flex; align-items: center; gap: .6rem; padding: .65rem .9rem;
+            border: 1px solid var(--line); border-radius: 10px; cursor: pointer; transition: all .12s;
         }
         .opt:hover { border-color: var(--accent); background: var(--accent-soft); }
-        .opt input { margin: 0; }
-        .opt.correct { border-color: #16a34a; background: #dcfce7; }
-        .opt.wrong { border-color: #dc2626; background: #fee2e2; }
-        button.rate { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+        .opt input { margin: 0; accent-color: var(--accent); }
+        .opt.correct { border-color: var(--good); background: var(--good-soft); }
+        .opt.wrong { border-color: var(--bad); background: var(--bad-soft); }
+        button.rate { background: var(--field); color: var(--ink); border: 1px solid var(--line); }
         button.rate:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-dark); }
 
         .upload { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
-        .upload input[type=file] { flex: 1; font-size: .88rem; }
+        .upload input[type=file] { flex: 1; font-size: .88rem; color: var(--muted); }
         .upload button { background: #475569; }
         .upload button:hover { background: #334155; }
+        [data-theme="dark"] .upload button { background: #334155; }
     </style>
 </head>
 <body>
-    <header>
-        <h1>Réviseur RAG</h1>
-        <div class="subtitle">Pose des questions et génère des fiches à partir de tes cours.</div>
-        <div class="corpus">Corpus : <b id="corpus">{{ documents | join(", ") if documents else "aucun document" }}</b></div>
-    </header>
+    <div class="toast-container" id="toasts"></div>
 
-    <div class="tabs">
-        <button class="tab active" data-mode="qa">Q&amp;A</button>
-        <button class="tab" data-mode="fiche">Fiche</button>
-        <button class="tab" data-mode="quiz">QCM</button>
-        <button class="tab" data-mode="recall">Interroge-moi</button>
-        <button class="tab" data-mode="flashcards">Flashcards</button>
-    </div>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+            <div class="logo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5v-5"/></svg>
+            </div>
+            <div>
+                <div class="brand-name">Réviseur RAG</div>
+                <div class="brand-sub">Révise tes cours par RAG</div>
+            </div>
+        </div>
 
-    <div id="flash"></div>
+        <nav class="tabs">
+            <button class="tab active" data-mode="qa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Q&amp;A</span></button>
+            <button class="tab" data-mode="fiche"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span>Fiche</span></button>
+            <button class="tab" data-mode="quiz"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>QCM</span></button>
+            <button class="tab" data-mode="recall"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Interroge-moi</span></button>
+            <button class="tab" data-mode="flashcards"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg><span>Flashcards</span></button>
+        </nav>
 
-    <div class="card">
-        <div class="controls">
-            <label class="field" for="document">Document :</label>
+        <div class="side-block">
+            <label class="field" for="document">Document</label>
             <select id="document">
                 <option value="">Tout le corpus</option>
                 {% for doc in documents %}<option value="{{ doc }}">{{ doc }}</option>{% endfor %}
             </select>
         </div>
+
+        <form class="upload side-block" id="upload-form" enctype="multipart/form-data">
+            <label class="field" for="pdf">Ajouter un cours</label>
+            <input type="file" id="pdf" name="pdf" accept="application/pdf">
+            <button type="submit">Indexer le PDF</button>
+        </form>
+
+        <div class="side-foot">
+            <span class="corpus"><b id="corpus">{{ documents | length }}</b> document(s)</span>
+            <button class="theme-toggle" id="theme-toggle" type="button" title="Basculer le thème" aria-label="Basculer le thème"></button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="stats-row">
+            <div class="stat due"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div><div class="stat-val" id="stat-due">—</div><div class="stat-lbl">À réviser</div></div></div>
+            <div class="stat good"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div><div class="stat-val" id="stat-learned">—</div><div class="stat-lbl">Maîtrisées</div></div></div>
+            <div class="stat"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div><div><div class="stat-val" id="stat-total">—</div><div class="stat-lbl">Cartes</div></div></div>
+            <div class="stat"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div><div><div class="stat-val" id="stat-docs">—</div><div class="stat-lbl">Documents</div></div></div>
+        </div>
+
+        <div class="card">
 
         <div class="panel active" id="panel-qa">
             <form class="row" id="ask-form">
@@ -196,13 +323,8 @@
         </div>
     </div>
 
-    <div class="output" id="result"></div>
-
-    <div class="card">
-        <form class="upload" id="upload-form" enctype="multipart/form-data">
-            <input type="file" id="pdf" name="pdf" accept="application/pdf">
-            <button type="submit">Ajouter un PDF</button>
-        </form>
+        <div class="output" id="result"></div>
+      </main>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -211,18 +333,58 @@
         const md = (text) => (window.marked ? marked.parse(text) : text);
         const esc = (s) => { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; };
 
+        const TOAST_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        const TOAST_ERR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
         const flash = (msg, isError) => {
-            $("flash").innerHTML = `<div class="flash ${isError ? "error" : "ok"}">${msg}</div>`;
+            const toast = document.createElement("div");
+            toast.className = `toast ${isError ? "error" : "ok"}`;
+            toast.innerHTML = `${isError ? TOAST_ERR : TOAST_OK}<span>${msg}</span>`;
+            $("toasts").appendChild(toast);
+            const remove = () => {
+                toast.classList.add("leaving");
+                toast.addEventListener("animationend", () => toast.remove(), {once: true});
+            };
+            setTimeout(remove, 4000);
+            toast.addEventListener("click", remove);
         };
         const spin = (msg) => { $("result").innerHTML = `<div class="spinner">${msg}</div>`; };
 
+        const ICON_MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+        const ICON_SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+        const applyTheme = (theme) => {
+            document.documentElement.setAttribute("data-theme", theme);
+            $("theme-toggle").innerHTML = theme === "dark" ? ICON_SUN : ICON_MOON;
+        };
+        const savedTheme = localStorage.getItem("theme") ||
+            (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        applyTheme(savedTheme);
+        $("theme-toggle").addEventListener("click", () => {
+            const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+            localStorage.setItem("theme", next);
+            applyTheme(next);
+        });
+
         const refreshDocuments = (documents) => {
-            $("corpus").textContent = documents.length ? documents.join(", ") : "aucun document";
+            $("corpus").textContent = documents.length;
             const select = $("document");
             const current = select.value;
             select.innerHTML = '<option value="">Tout le corpus</option>' +
                 documents.map(d => `<option value="${d}">${d}</option>`).join("");
             select.value = current;
+        };
+
+        const refreshStats = async () => {
+            try {
+                const res = await fetch("/api/stats", {
+                    method: "POST", headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({document: $("document").value})
+                });
+                const s = await res.json();
+                $("stat-due").textContent = s.due;
+                $("stat-learned").textContent = s.learned;
+                $("stat-total").textContent = s.total;
+                $("stat-docs").textContent = s.documents;
+            } catch (err) { /* stats non bloquantes */ }
         };
 
         document.querySelectorAll(".tab").forEach(tab => {
@@ -281,6 +443,7 @@
         const showProgress = (p) => {
             $("recall-progress").textContent =
                 `À réviser : ${p.due} · Maîtrisées : ${p.learned} / ${p.total}`;
+            refreshStats();
         };
 
         const refreshProgress = async () => {
@@ -361,6 +524,7 @@
 
         const showQuizProgress = (p) => {
             $("quiz-progress").textContent = `À réviser : ${p.due} · Maîtrisées : ${p.learned} / ${p.total}`;
+            refreshStats();
         };
 
         const refreshQuizProgress = async () => {
@@ -457,6 +621,7 @@
 
         const showFlashProgress = (p) => {
             $("flash-progress").textContent = `À réviser : ${p.due} · Maîtrisées : ${p.learned} / ${p.total}`;
+            refreshStats();
         };
 
         const refreshFlashProgress = async () => {
@@ -535,9 +700,13 @@
                 if (!res.ok) { flash(data.error, true); return; }
                 refreshDocuments(data.documents);
                 fileInput.value = "";
+                refreshStats();
                 flash(data.message, false);
             } catch (err) { flash("Erreur réseau.", true); }
         });
+
+        $("document").addEventListener("change", refreshStats);
+        refreshStats();
     </script>
 </body>
 </html>
