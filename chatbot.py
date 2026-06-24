@@ -166,7 +166,10 @@ def feynman_feedback(client, concept, explanation, chunks):
         "## Pour aller plus loin\n(si l'explication est solide : 2 à 3 questions ou notions pour "
         "approfondir ; sinon : les notions précises à revoir en priorité)\n\n"
         "Tutoie l'étudiant, sois encourageant mais exigeant. Ne réécris pas l'explication à sa "
-        "place. Si l'explication est vide ou trop courte pour être évaluée, dis-le. N'invente rien."
+        "place. Si l'explication se limite à citer des termes ou reste très superficielle, ne "
+        "demande pas de tout définir : choisis LA notion la plus importante ou la plus subtile, "
+        "et demande-lui de te la définir précisément, avec un exemple si possible — concentre ton "
+        "retour sur celle-là. Si l'explication est vide, dis-le. N'invente rien."
     )
     response = client.chat.completions.create(
         model=GROQ_MODEL,
