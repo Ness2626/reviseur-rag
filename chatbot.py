@@ -13,7 +13,6 @@ from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 
 DOCS_DIR = "docs"
-PDF_PATH = "signature-m1.pdf"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 CHUNK_SIZE = 800
@@ -32,12 +31,12 @@ class Chunk:
         return f"{self.source} p.{self.page}"
 
 
-def discover_pdfs(docs_dir=DOCS_DIR, fallback=PDF_PATH):
+def discover_pdfs(docs_dir=DOCS_DIR):
     if os.path.isdir(docs_dir):
         paths = sorted(glob(os.path.join(docs_dir, "*.pdf")))
         if paths:
             return paths
-    return [fallback] if os.path.exists(fallback) else []
+    return sorted(glob("*.pdf"))
 
 
 def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
@@ -271,7 +270,7 @@ def main():
 
     paths = discover_pdfs()
     if not paths:
-        print(f"Erreur : aucun PDF trouvé dans '{DOCS_DIR}/' ni '{PDF_PATH}'", file=sys.stderr)
+        print(f"Erreur : aucun PDF trouvé dans '{DOCS_DIR}/'", file=sys.stderr)
         sys.exit(1)
 
     print(f"Lecture de {len(paths)} document(s) : {', '.join(os.path.basename(p) for p in paths)}")
