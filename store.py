@@ -72,6 +72,17 @@ def init_db(db_path=DB_PATH):
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS skills (
+                kind TEXT PRIMARY KEY,
+                ease REAL NOT NULL DEFAULT 2.5,
+                repetitions INTEGER NOT NULL DEFAULT 0,
+                interval INTEGER NOT NULL DEFAULT 0,
+                due_date TEXT NOT NULL
+            )
+            """
+        )
 
 
 def add_cards(document, cards, db_path=DB_PATH):
@@ -165,6 +176,57 @@ def progress(document=None, kind=None, today=None, db_path=DB_PATH):
         learned = conn.execute(
             f"SELECT COUNT(*) AS n FROM cards{where('repetitions >= ?')}",
             params + [LEARNED_REPETITIONS],
+        ).fetchone()["n"]
+    return {"total": total, "due": due, "learned": learned}
+
+
+def ensure_skills(kinds, today=None, db_path=DB_PATH):
+    today = today or date.today().isoformat()
+    with _lock, _connect(db_path) as conn:
+        for kind in kinds:
+            conn.execute(
+                "INSERT OR IGNORE INTO skills (kind, due_date) VALUES (?, ?)",
+                (kind, today),
+            )
+
+
+def next_due_skill(today=None, db_path=DB_PATH):
+    today = today or date.today().isoformat()
+    with _lock, _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT kind FROM skills WHERE due_date <= ? ORDER BY due_date ASC, kind ASC LIMIT 1",
+            (today,),
+        ).fetchone()
+    return row["kind"] if row else None
+
+
+def record_skill_review(kind, quality, today=None, db_path=DB_PATH):
+    review_day = today or date.today()
+    with _lock, _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT ease, repetitions, interval FROM skills WHERE kind = ?", (kind,)
+        ).fetchone()
+        if row is None:
+            return None
+        state = scheduler.CardState(row["ease"], row["repetitions"], row["interval"])
+        updated = scheduler.review(state, quality)
+        due = scheduler.next_due_date(updated.interval, review_day)
+        conn.execute(
+            "UPDATE skills SET ease = ?, repetitions = ?, interval = ?, due_date = ? WHERE kind = ?",
+            (updated.ease, updated.repetitions, updated.interval, due.isoformat(), kind),
+        )
+    return {"interval": updated.interval, "due_date": due.isoformat()}
+
+
+def skills_progress(today=None, db_path=DB_PATH):
+    today = today or date.today().isoformat()
+    with _lock, _connect(db_path) as conn:
+        total = conn.execute("SELECT COUNT(*) AS n FROM skills").fetchone()["n"]
+        due = conn.execute(
+            "SELECT COUNT(*) AS n FROM skills WHERE due_date <= ?", (today,)
+        ).fetchone()["n"]
+        learned = conn.execute(
+            "SELECT COUNT(*) AS n FROM skills WHERE repetitions >= ?", (LEARNED_REPETITIONS,)
         ).fetchone()["n"]
     return {"total": total, "due": due, "learned": learned}
 

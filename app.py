@@ -25,6 +25,9 @@ _model = SentenceTransformer(chatbot.EMBEDDING_MODEL)
 os.makedirs(chatbot.DOCS_DIR, exist_ok=True)
 
 store.init_db()
+store.ensure_skills(exercises.KINDS)
+EXERCISE_CORRECT_GRADE = 5
+EXERCISE_WRONG_GRADE = 1
 _engine = RagEngine(Groq(api_key=_api_key), _model)
 _engine.rebuild()
 print(f"Index prêt : {len(_engine.documents())} document(s).")
@@ -62,6 +65,14 @@ def api_exercise_new():
     return jsonify(exercises.new_exercise(data.get("kind") or None))
 
 
+@app.route("/api/exercise/next", methods=["POST"])
+def api_exercise_next():
+    kind = store.next_due_skill()
+    progress = store.skills_progress()
+    exercise = exercises.new_exercise(kind) if kind else None
+    return jsonify({"exercise": exercise, "progress": progress})
+
+
 @app.route("/api/exercise/grade", methods=["POST"])
 def api_exercise_grade():
     data = request.get_json(silent=True) or {}
@@ -70,7 +81,13 @@ def api_exercise_grade():
     if not kind or not isinstance(params, dict):
         return jsonify({"error": "Exercice invalide."}), 400
     result = exercises.grade(kind, params, data.get("answer"))
-    return jsonify(result), (400 if "error" in result else 200)
+    if "error" in result:
+        return jsonify(result), 400
+    grade_value = EXERCISE_CORRECT_GRADE if result["correct"] else EXERCISE_WRONG_GRADE
+    schedule = store.record_skill_review(kind, grade_value)
+    result["next_due_in_days"] = schedule["interval"] if schedule else None
+    result["progress"] = store.skills_progress()
+    return jsonify(result)
 
 
 @app.route("/api/ask", methods=["POST"])

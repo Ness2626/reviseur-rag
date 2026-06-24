@@ -74,6 +74,26 @@ def test_dashboard_groups_by_document(db):
     assert by_doc == {"a.pdf": 1, "b.pdf": 2}
 
 
+def test_ensure_skills_is_idempotent(db):
+    store.ensure_skills(["modexp", "rsa_verify"], db_path=db)
+    store.ensure_skills(["modexp", "rsa_verify"], db_path=db)
+    assert store.skills_progress(db_path=db)["total"] == 2
+
+
+def test_next_due_skill_returns_seeded_then_none_after_review(db):
+    store.ensure_skills(["modexp"], today="2026-01-01", db_path=db)
+    assert store.next_due_skill(today="2026-01-01", db_path=db) == "modexp"
+    store.record_skill_review("modexp", 5, today=date(2026, 1, 1), db_path=db)
+    assert store.next_due_skill(today="2026-01-01", db_path=db) is None
+
+
+def test_record_skill_review_reschedules(db):
+    store.ensure_skills(["modexp"], today="2026-01-01", db_path=db)
+    schedule = store.record_skill_review("modexp", 5, today=date(2026, 1, 1), db_path=db)
+    assert schedule["interval"] == 1
+    assert schedule["due_date"] == "2026-01-02"
+
+
 def test_record_review_logs_history(db):
     store.add_cards("doc.pdf", [{"question": "Q", "answer": "A"}], db)
     card = store.next_due_card("doc.pdf", kind="open", db_path=db)
