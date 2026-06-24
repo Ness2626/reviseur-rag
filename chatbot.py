@@ -147,6 +147,34 @@ def answer(client, question, chunks):
     return response.choices[0].message.content
 
 
+def feynman_feedback(client, concept, explanation, chunks):
+    context = "\n\n---\n\n".join(f"[{chunk.label()}]\n{chunk.text}" for chunk in chunks)
+    prompt = (
+        "Tu appliques la technique Feynman : l'étudiant t'explique un concept avec ses propres mots, "
+        "comme à un débutant. Ton rôle est de repérer où son explication est floue, incomplète ou "
+        "inexacte, en te basant STRICTEMENT sur le cours fourni — pas sur tes connaissances générales.\n\n"
+        f"Concept : {concept}\n\n"
+        f"Explication de l'étudiant :\n{explanation}\n\n"
+        f"Extraits du cours :\n{context}\n\n"
+        "Réponds en français, en Markdown, avec exactement ces trois sections :\n"
+        "## Ce qui est juste\n(1 à 2 points concis sur ce qui est correct ou bien vu)\n"
+        "## Lacunes et imprécisions\n(les points vagues, faux ou manquants par rapport au cours ; "
+        "sois précis et nomme la notion exacte du cours qui manque ou est mal comprise)\n"
+        "## À revoir\n(2 à 3 pistes concrètes, formulées comme des notions précises ou des questions)\n\n"
+        "Sois bienveillant mais exigeant. Ne réécris pas l'explication à sa place. Si l'explication est "
+        "vide, hors sujet ou trop courte pour être évaluée, dis-le franchement. N'invente rien."
+    )
+    response = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": "Tu es un binôme de révision exigeant qui aide à repérer les trous de compréhension, en français."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.3,
+    )
+    return response.choices[0].message.content
+
+
 def summarize_fiche(client, chunks, scope_label):
     context = "\n\n---\n\n".join(f"[{chunk.label()}]\n{chunk.text}" for chunk in chunks)
     prompt = (

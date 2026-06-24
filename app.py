@@ -102,6 +102,20 @@ def api_ask():
     return jsonify(_engine.ask(question, document))
 
 
+@app.route("/api/feynman", methods=["POST"])
+def api_feynman():
+    data = request.get_json(silent=True) or {}
+    concept = (data.get("concept") or "").strip()
+    explanation = (data.get("explanation") or "").strip()
+    document = data.get("document") or None
+    if not concept or not explanation:
+        return jsonify({"error": "Indique un concept et ton explication."}), 400
+    if not _engine.has_index():
+        return jsonify({"error": "Aucun document indexé. Ajoutez d'abord un PDF."}), 400
+    result = _engine.feynman(concept, explanation, document)
+    return jsonify(result), (400 if "error" in result else 200)
+
+
 @app.route("/api/fiche", methods=["POST"])
 def api_fiche():
     data = request.get_json(silent=True) or {}
