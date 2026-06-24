@@ -599,6 +599,7 @@
                 $("feynman-area").innerHTML =
                     `<div class="answer"><div class="qlabel">Retour sur « ${esc(concept)} »</div>${md(data.feedback)}` +
                     (sources ? `<div class="sources"><strong>Basé sur :</strong><br>${sources}</div>` : "") +
+                    `<div class="hint">Complète ton explication ci-dessus et revalide pour creuser.</div>` +
                     `</div>`;
             } catch (err) { $("feynman-area").innerHTML = ""; flash("Erreur réseau.", true); }
             finally { btn.disabled = false; }
