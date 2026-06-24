@@ -106,3 +106,7 @@ Les tests couvrent l'algorithme SM-2 : calcul des intervalles, réinitialisation
 
 - La recherche se fait en mémoire avec numpy : largement suffisant pour quelques documents, mais à remplacer par un index vectoriel dédié (FAISS) si le corpus grossit.
 - Pas d'authentification ni de comptes : le projet est pensé pour un usage local.
+
+## Licence
+
+MIT — voir [LICENSE](LICENSE).
