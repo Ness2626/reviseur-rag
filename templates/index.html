@@ -388,17 +388,19 @@
         </div>
 
         <div class="panel" id="panel-exercises">
+            <div class="progress" id="exo-progress">—</div>
             <div class="recall-actions" style="align-items:center">
-                <label class="field" for="exo-kind">Type :</label>
+                <button id="exo-review-btn">Réviser</button>
+                <label class="field" for="exo-kind" style="margin-left:.4rem">Ou s'entraîner :</label>
                 <select id="exo-kind">
                     <option value="">Aléatoire</option>
                     <option value="rsa_verify">Vérification de signature RSA</option>
                     <option value="modexp">Exponentiation modulaire</option>
                     <option value="rsa_private_exponent">Clé privée RSA (exposant d)</option>
                 </select>
-                <button id="exo-new-btn">Nouvel exercice</button>
+                <button class="ghost" id="exo-new-btn">Nouvel exercice</button>
             </div>
-            <div class="hint">Exercices de calcul à solution vérifiée (calculée en Python, jamais par l'IA — donc toujours juste). Correction immédiate + solution étape par étape.</div>
+            <div class="hint">Exercices de calcul à solution vérifiée (calculée en Python, jamais par l'IA — donc toujours juste). « Réviser » suit la répétition espacée par type de compétence ; chaque exercice résolu replanifie sa compétence.</div>
             <div id="exo-area"></div>
         </div>
 
@@ -523,7 +525,7 @@
                 if (tab.dataset.mode === "recall") loadNextCard();
                 if (tab.dataset.mode === "quiz") loadNextQuiz();
                 if (tab.dataset.mode === "flashcards") loadNextFlash();
-                if (tab.dataset.mode === "exercises") loadExercise();
+                if (tab.dataset.mode === "exercises") reviewExercise();
                 if (tab.dataset.mode === "dashboard") loadDashboard();
             });
         });
@@ -917,18 +919,27 @@
 
         let currentExo = null;
 
+        const showExoProgress = (p) => {
+            if (p) $("exo-progress").textContent =
+                `Compétences — à réviser : ${p.due} · maîtrisées : ${p.learned} / ${p.total}`;
+        };
+
         const renderExoResult = (data) => {
             const verdict = data.correct
                 ? '<span class="badge good">Correct ✓</span>'
                 : '<span class="badge bad">Incorrect ✗</span>';
             const steps = data.solution.map(s => `<li>${esc(s)}</li>`).join("");
+            const dueLine = data.next_due_in_days != null
+                ? `<div class="hint">Compétence revue dans ${data.next_due_in_days} jour(s).</div>` : "";
+            showExoProgress(data.progress);
             $("exo-result").innerHTML =
                 `${verdict}` +
                 (data.correct ? "" : `<div class="reference"><b>Réponse attendue :</b> ${esc(String(data.answer))}</div>`) +
                 `<details class="exo-solution" ${data.correct ? "" : "open"}>` +
                 `<summary>Solution étape par étape</summary><ol>${steps}</ol></details>` +
-                `<button id="exo-next" style="margin-top:.8rem">Exercice suivant</button>`;
-            $("exo-next").addEventListener("click", loadExercise);
+                dueLine +
+                `<button id="exo-next" style="margin-top:.8rem">Continuer</button>`;
+            $("exo-next").addEventListener("click", reviewExercise);
         };
 
         const submitExo = async () => {
@@ -983,6 +994,24 @@
             } catch (err) { flash("Erreur réseau.", true); }
         };
 
+        const reviewExercise = async () => {
+            $("exo-area").innerHTML = '<div class="spinner">Chargement…</div>';
+            try {
+                const res = await fetch("/api/exercise/next", {
+                    method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"
+                });
+                const data = await res.json();
+                showExoProgress(data.progress);
+                if (!data.exercise) {
+                    emptyState("exo-area",
+                        "Toutes les compétences sont à jour. Tu peux t'entraîner librement ci-dessus.");
+                    return;
+                }
+                renderExo(data.exercise);
+            } catch (err) { flash("Erreur réseau.", true); }
+        };
+
+        $("exo-review-btn").addEventListener("click", reviewExercise);
         $("exo-new-btn").addEventListener("click", loadExercise);
         $("exo-kind").addEventListener("change", loadExercise);
 
