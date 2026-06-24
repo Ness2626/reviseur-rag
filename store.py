@@ -185,20 +185,42 @@ def dashboard(document=None, today=None, db_path=DB_PATH):
     card_filter = " WHERE document = ?" if document else ""
     card_params = [document] if document else []
 
+    review_join = " WHERE c.document = ?" if document else ""
+    review_params = [document] if document else []
+
     with _lock, _connect(db_path) as conn:
         maturity = {"new": 0, "learning": 0, "young": 0, "mature": 0}
         for row in conn.execute(f"SELECT repetitions, interval FROM cards{card_filter}", card_params):
             maturity[_maturity_bucket(row["repetitions"], row["interval"])] += 1
 
-        by_document = [
-            {"document": row["document"], "total": row["total"], "learned": row["learned"]}
+        success_by_doc = {
+            row["document"]: (row["n"], row["ok"])
             for row in conn.execute(
-                f"SELECT document, COUNT(*) AS total, "
-                f"SUM(CASE WHEN repetitions >= {LEARNED_REPETITIONS} THEN 1 ELSE 0 END) AS learned "
-                f"FROM cards{card_filter} GROUP BY document ORDER BY total DESC",
-                card_params,
+                "SELECT c.document AS document, COUNT(*) AS n, "
+                "SUM(CASE WHEN r.quality >= 3 THEN 1 ELSE 0 END) AS ok "
+                "FROM reviews r JOIN cards c ON c.id = r.card_id"
+                f"{review_join} GROUP BY c.document",
+                review_params,
             )
-        ]
+        }
+
+        by_document = []
+        for row in conn.execute(
+            f"SELECT document, COUNT(*) AS total, "
+            f"SUM(CASE WHEN repetitions >= {LEARNED_REPETITIONS} THEN 1 ELSE 0 END) AS learned, "
+            f"SUM(CASE WHEN due_date <= ? THEN 1 ELSE 0 END) AS due, "
+            f"SUM(CASE WHEN due_date <= ? AND options IS NOT NULL THEN 1 ELSE 0 END) AS due_quiz, "
+            f"SUM(CASE WHEN due_date <= ? AND options IS NULL THEN 1 ELSE 0 END) AS due_open "
+            f"FROM cards{card_filter} GROUP BY document ORDER BY total DESC",
+            [today_iso, today_iso, today_iso] + card_params,
+        ):
+            reviewed, ok = success_by_doc.get(row["document"], (0, 0))
+            by_document.append({
+                "document": row["document"], "total": row["total"], "learned": row["learned"],
+                "due": row["due"], "due_quiz": row["due_quiz"], "due_open": row["due_open"],
+                "reviewed": reviewed,
+                "success_rate": round(ok / reviewed * 100) if reviewed else None,
+            })
 
         due_map = {
             row["due_date"]: row["n"]
@@ -208,8 +230,6 @@ def dashboard(document=None, today=None, db_path=DB_PATH):
             )
         }
 
-        review_join = " WHERE c.document = ?" if document else ""
-        review_params = [document] if document else []
         review_map = {
             row["day"]: (row["n"], row["avgq"])
             for row in conn.execute(
