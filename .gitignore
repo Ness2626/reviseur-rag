@@ -16,3 +16,6 @@ __pycache__/
 venv-rag/
 *.egg-info/
 !docs/.gitkeep
+
+# PDF de démo/fallback à la racine (ne pas committer de matériel de cours)
+/*.pdf
