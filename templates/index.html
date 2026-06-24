@@ -239,6 +239,31 @@
         .src-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .scope-line { color: var(--muted); font-size: .8rem; margin: -.4rem 0 1.1rem; }
         .scope-line b { color: var(--ink); font-weight: 600; }
+
+        .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .dash-card { border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; background: var(--field); }
+        .dash-card.dash-wide { grid-column: 1 / -1; }
+        .dash-card h3 { margin: 0 0 .15rem; font-size: 1rem; font-weight: 600; }
+        .dash-card .hint { margin-top: .1rem; margin-bottom: .7rem; }
+        .chart-box { position: relative; height: 220px; }
+        @media (max-width: 760px) { .dash-grid { grid-template-columns: 1fr; } }
+
+        .heatmap { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; max-width: 320px; }
+        .heatmap i {
+            aspect-ratio: 1; border-radius: 3px; background: var(--accent-soft);
+            border: 1px solid var(--line);
+        }
+        .heatmap i[data-l="1"] { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+        .heatmap i[data-l="2"] { background: color-mix(in srgb, var(--accent) 55%, transparent); }
+        .heatmap i[data-l="3"] { background: color-mix(in srgb, var(--accent) 78%, transparent); }
+        .heatmap i[data-l="4"] { background: var(--accent); border-color: var(--accent); }
+        .heat-legend { display: flex; align-items: center; gap: 4px; margin-top: .7rem; font-size: .72rem; color: var(--muted); }
+        .heat-legend i { width: 13px; height: 13px; border-radius: 3px; border: 1px solid var(--line); }
+        .heat-legend i[data-l="0"] { background: var(--accent-soft); }
+        .heat-legend i[data-l="1"] { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+        .heat-legend i[data-l="2"] { background: color-mix(in srgb, var(--accent) 55%, transparent); }
+        .heat-legend i[data-l="3"] { background: color-mix(in srgb, var(--accent) 78%, transparent); }
+        .heat-legend i[data-l="4"] { background: var(--accent); }
         button.rate { background: var(--field); color: var(--ink); border: 1px solid var(--line); }
         button.rate:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-dark); }
 
@@ -270,6 +295,7 @@
             <button class="tab" data-mode="quiz"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>QCM</span></button>
             <button class="tab" data-mode="recall"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Interroge-moi</span></button>
             <button class="tab" data-mode="flashcards"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg><span>Flashcards</span></button>
+            <button class="tab" data-mode="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span>Tableau de bord</span></button>
         </nav>
 
         <div class="side-block">
@@ -338,6 +364,33 @@
             <div class="hint">Même jeu de cartes que « Interroge-moi », révisé en autonomie : révèle la réponse et note-toi (pas de correction IA). Génère d'abord des questions dans l'onglet « Interroge-moi ».</div>
             <div id="flash-area"></div>
         </div>
+
+        <div class="panel" id="panel-dashboard">
+            <div id="dash-empty" class="empty" style="display:none"></div>
+            <div class="dash-grid" id="dash-grid">
+                <div class="dash-card">
+                    <h3>Maturité des cartes</h3>
+                    <div class="hint">Progression dans la répétition espacée (du nouveau au maîtrisé).</div>
+                    <div class="chart-box"><canvas id="chart-maturity"></canvas></div>
+                </div>
+                <div class="dash-card">
+                    <h3>Activité de révision</h3>
+                    <div class="hint">Nombre de cartes révisées par jour (14 derniers jours).</div>
+                    <div class="chart-box"><canvas id="chart-activity"></canvas></div>
+                </div>
+                <div class="dash-card dash-wide">
+                    <h3>Cartes par document</h3>
+                    <div class="hint">Total par cours, dont la part déjà maîtrisée.</div>
+                    <div class="chart-box"><canvas id="chart-docs"></canvas></div>
+                </div>
+                <div class="dash-card dash-wide">
+                    <h3>Échéances à venir</h3>
+                    <div class="hint"><b id="dash-overdue">0</b> carte(s) en retard · cartes dues sur les 5 prochaines semaines.</div>
+                    <div id="heatmap" class="heatmap"></div>
+                    <div class="heat-legend"><span>moins</span><i data-l="0"></i><i data-l="1"></i><i data-l="2"></i><i data-l="3"></i><i data-l="4"></i><span>plus</span></div>
+                </div>
+            </div>
+        </div>
     </div>
 
         <div class="output" id="result"></div>
@@ -345,6 +398,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
         const $ = (id) => document.getElementById(id);
         const md = (text) => (window.marked ? marked.parse(text) : text);
@@ -379,6 +433,7 @@
             const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
             localStorage.setItem("theme", next);
             applyTheme(next);
+            if ($("panel-dashboard").classList.contains("active")) loadDashboard();
         });
 
         const refreshDocuments = (documents) => {
@@ -430,6 +485,7 @@
                 if (tab.dataset.mode === "recall") loadNextCard();
                 if (tab.dataset.mode === "quiz") loadNextQuiz();
                 if (tab.dataset.mode === "flashcards") loadNextFlash();
+                if (tab.dataset.mode === "dashboard") loadDashboard();
             });
         });
 
@@ -696,6 +752,87 @@
             renderFlash(data.card);
         };
 
+        let dashCharts = [];
+        const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        const shortDate = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
+        const heatLevel = (n) => n === 0 ? 0 : n <= 2 ? 1 : n <= 5 ? 2 : n <= 9 ? 3 : 4;
+
+        const renderHeatmap = (calendar, overdue) => {
+            $("dash-overdue").textContent = overdue;
+            $("heatmap").innerHTML = calendar.map(c => {
+                const t = `${shortDate(c.date)} — ${c.count} carte(s)`;
+                return `<i data-l="${heatLevel(c.count)}" title="${t}"></i>`;
+            }).join("");
+        };
+
+        const renderDashboard = (data) => {
+            const ink = cssVar("--ink"), muted = cssVar("--muted"), line = cssVar("--line");
+            const accent = cssVar("--accent"), good = cssVar("--good"), bad = cssVar("--bad");
+            Chart.defaults.color = muted;
+            Chart.defaults.font.family = "system-ui, sans-serif";
+            dashCharts.forEach(c => c.destroy());
+            dashCharts = [];
+
+            const m = data.maturity;
+            dashCharts.push(new Chart($("chart-maturity"), {
+                type: "doughnut",
+                data: {
+                    labels: ["Nouvelles", "En apprentissage", "Jeunes", "Mûres"],
+                    datasets: [{ data: [m.new, m.learning, m.young, m.mature],
+                        backgroundColor: [muted, accent, "#0ea5e9", good], borderWidth: 0 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: "right", labels: { boxWidth: 12, padding: 10 } } } }
+            }));
+
+            const hist = data.reviews_history;
+            dashCharts.push(new Chart($("chart-activity"), {
+                type: "line",
+                data: { labels: hist.map(h => shortDate(h.date)),
+                    datasets: [{ data: hist.map(h => h.count), label: "Cartes révisées",
+                        borderColor: accent, backgroundColor: accent + "33", fill: true, tension: .35,
+                        pointRadius: 2 }] },
+                options: { responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { grid: { display: false } },
+                        y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: line } } } }
+            }));
+
+            const docs = data.by_document.map(d => d.document === "corpus" ? "Tout le corpus" : d.document);
+            dashCharts.push(new Chart($("chart-docs"), {
+                type: "bar",
+                data: { labels: docs, datasets: [
+                    { label: "Maîtrisées", data: data.by_document.map(d => d.learned), backgroundColor: good },
+                    { label: "À apprendre", data: data.by_document.map(d => d.total - d.learned), backgroundColor: accent } ] },
+                options: { indexAxis: "y", responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: "bottom", labels: { boxWidth: 12 } } },
+                    scales: { x: { stacked: true, beginAtZero: true, ticks: { precision: 0 }, grid: { color: line } },
+                        y: { stacked: true, grid: { display: false } } } }
+            }));
+
+            renderHeatmap(data.due_calendar, data.overdue);
+        };
+
+        const loadDashboard = async () => {
+            if (!window.Chart) { flash("Graphiques indisponibles (Chart.js non chargé).", true); return; }
+            let data;
+            try {
+                const res = await fetch("/api/dashboard", {
+                    method: "POST", headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({document: $("document").value})
+                });
+                data = await res.json();
+            } catch (err) { flash("Erreur de chargement du tableau de bord.", true); return; }
+            const m = data.maturity;
+            const hasCards = (m.new + m.learning + m.young + m.mature) > 0;
+            $("dash-grid").style.display = hasCards ? "" : "none";
+            $("dash-empty").style.display = hasCards ? "none" : "";
+            if (!hasCards) {
+                $("dash-empty").innerHTML = EMPTY_ICON + "<p>Aucune carte pour l'instant. Génère un QCM ou des questions pour voir tes statistiques.</p>";
+                return;
+            }
+            renderDashboard(data);
+        };
 
         $("upload-form").addEventListener("submit", async (e) => {
             e.preventDefault();
@@ -715,7 +852,10 @@
             } catch (err) { flash("Erreur réseau.", true); }
         });
 
-        $("document").addEventListener("change", refreshStats);
+        $("document").addEventListener("change", () => {
+            refreshStats();
+            if ($("panel-dashboard").classList.contains("active")) loadDashboard();
+        });
         refreshStats();
     </script>
 </body>

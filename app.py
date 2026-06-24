@@ -48,6 +48,13 @@ def api_stats():
     return jsonify(stats)
 
 
+@app.route("/api/dashboard", methods=["POST"])
+def api_dashboard():
+    data = request.get_json(silent=True) or {}
+    document = data.get("document") or None
+    return jsonify(_engine.dashboard(document))
+
+
 @app.route("/api/ask", methods=["POST"])
 def api_ask():
     data = request.get_json(silent=True) or {}

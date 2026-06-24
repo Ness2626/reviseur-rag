@@ -3,12 +3,16 @@
 import json
 import sqlite3
 import threading
-from datetime import date
+from datetime import date, timedelta
 
 import scheduler
 
 DB_PATH = "revision.db"
 LEARNED_REPETITIONS = 3
+YOUNG_INTERVAL_DAYS = 7
+MATURE_INTERVAL_DAYS = 21
+DUE_HORIZON_DAYS = 34
+HISTORY_DAYS = 13
 _lock = threading.Lock()
 
 
@@ -58,6 +62,16 @@ def init_db(db_path=DB_PATH):
             conn.execute("ALTER TABLE cards ADD COLUMN options TEXT")
         if "explanation" not in columns:
             conn.execute("ALTER TABLE cards ADD COLUMN explanation TEXT")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_id INTEGER NOT NULL,
+                quality INTEGER NOT NULL,
+                reviewed_at TEXT NOT NULL
+            )
+            """
+        )
 
 
 def add_cards(document, cards, db_path=DB_PATH):
@@ -121,6 +135,10 @@ def record_review(card_id, quality, today=None, db_path=DB_PATH):
             "UPDATE cards SET ease = ?, repetitions = ?, interval = ?, due_date = ? WHERE id = ?",
             (updated.ease, updated.repetitions, updated.interval, due.isoformat(), card_id),
         )
+        conn.execute(
+            "INSERT INTO reviews (card_id, quality, reviewed_at) VALUES (?, ?, ?)",
+            (card_id, quality, review_day.isoformat()),
+        )
     return {"interval": updated.interval, "due_date": due.isoformat()}
 
 
@@ -149,3 +167,79 @@ def progress(document=None, kind=None, today=None, db_path=DB_PATH):
             params + [LEARNED_REPETITIONS],
         ).fetchone()["n"]
     return {"total": total, "due": due, "learned": learned}
+
+
+def _maturity_bucket(repetitions, interval):
+    if repetitions == 0:
+        return "new"
+    if interval < YOUNG_INTERVAL_DAYS:
+        return "learning"
+    if interval < MATURE_INTERVAL_DAYS:
+        return "young"
+    return "mature"
+
+
+def dashboard(document=None, today=None, db_path=DB_PATH):
+    today = today or date.today()
+    today_iso = today.isoformat()
+    card_filter = " WHERE document = ?" if document else ""
+    card_params = [document] if document else []
+
+    with _lock, _connect(db_path) as conn:
+        maturity = {"new": 0, "learning": 0, "young": 0, "mature": 0}
+        for row in conn.execute(f"SELECT repetitions, interval FROM cards{card_filter}", card_params):
+            maturity[_maturity_bucket(row["repetitions"], row["interval"])] += 1
+
+        by_document = [
+            {"document": row["document"], "total": row["total"], "learned": row["learned"]}
+            for row in conn.execute(
+                f"SELECT document, COUNT(*) AS total, "
+                f"SUM(CASE WHEN repetitions >= {LEARNED_REPETITIONS} THEN 1 ELSE 0 END) AS learned "
+                f"FROM cards{card_filter} GROUP BY document ORDER BY total DESC",
+                card_params,
+            )
+        ]
+
+        due_map = {
+            row["due_date"]: row["n"]
+            for row in conn.execute(
+                f"SELECT due_date, COUNT(*) AS n FROM cards{card_filter} GROUP BY due_date",
+                card_params,
+            )
+        }
+
+        review_join = " WHERE c.document = ?" if document else ""
+        review_params = [document] if document else []
+        review_map = {
+            row["day"]: (row["n"], row["avgq"])
+            for row in conn.execute(
+                "SELECT r.reviewed_at AS day, COUNT(*) AS n, AVG(r.quality) AS avgq "
+                "FROM reviews r JOIN cards c ON c.id = r.card_id"
+                f"{review_join} GROUP BY r.reviewed_at",
+                review_params,
+            )
+        }
+
+    overdue = sum(n for day, n in due_map.items() if day < today_iso)
+    due_calendar = [
+        {"date": (today + timedelta(days=offset)).isoformat(),
+         "count": due_map.get((today + timedelta(days=offset)).isoformat(), 0)}
+        for offset in range(DUE_HORIZON_DAYS + 1)
+    ]
+    reviews_history = []
+    for offset in range(HISTORY_DAYS, -1, -1):
+        day = (today - timedelta(days=offset)).isoformat()
+        count, avg_quality = review_map.get(day, (0, None))
+        reviews_history.append({
+            "date": day,
+            "count": count,
+            "avg_quality": round(avg_quality, 2) if avg_quality is not None else None,
+        })
+
+    return {
+        "maturity": maturity,
+        "by_document": by_document,
+        "overdue": overdue,
+        "due_calendar": due_calendar,
+        "reviews_history": reviews_history,
+    }
