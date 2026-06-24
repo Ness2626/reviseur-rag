@@ -46,9 +46,27 @@ def main():
             page.wait_for_selector("#flash-back .reference", timeout=10000)
         page.screenshot(path=str(OUT_DIR / "04-flashcards.png"))
 
-        # Exercices : un exercice de calcul
+        # Exercices : générer puis résoudre correctement, déplier la solution (montre la valeur)
         _open_mode(page, "exercises")
+        page.click("#exo-new-btn")
         page.wait_for_selector("#exo-area .answer", timeout=30000)
+        exo = page.evaluate("() => currentExo")
+        prm = exo["params"]
+        if exo["kind"] == "rsa_verify":
+            n, hm = prm["p"] * prm["q"], prm["m"] % 10
+            answer = next(s for s in prm["options"] if pow(s, prm["e"], n) == hm)
+        elif exo["kind"] == "modexp":
+            answer = pow(prm["a"], prm["b"], prm["n"])
+        else:
+            answer = pow(prm["e"], -1, (prm["p"] - 1) * (prm["q"] - 1))
+        if exo["format"] == "mcq":
+            page.check(f"#exo-area input[name='exo-opt'][value='{answer}']")
+        else:
+            page.fill("#exo-input", str(answer))
+        page.click("#exo-submit")
+        page.wait_for_selector("#exo-result .badge", timeout=30000)
+        page.click(".exo-solution summary")
+        page.wait_for_timeout(200)
         page.screenshot(path=str(OUT_DIR / "05-exercices.png"))
 
         # Tableau de bord : attendre le rendu des graphes
