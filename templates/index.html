@@ -198,6 +198,7 @@
             border: 1px solid var(--line); border-radius: 10px; resize: vertical; margin: .3rem 0 .6rem;
             background: var(--field); color: var(--ink);
         }
+        .q-counter { font-size: .78rem; font-weight: 600; color: var(--muted); margin-bottom: .5rem; }
         .card-question { font-size: 1.08rem; font-weight: 600; margin: .2rem 0 .8rem; }
         .badge {
             display: inline-block; border-radius: 999px; padding: .2rem .8rem; font-size: .82rem;
@@ -523,7 +524,7 @@
                 $("panel-" + tab.dataset.mode).classList.add("active");
                 $("result").innerHTML = "";
                 if (tab.dataset.mode === "recall") loadNextCard();
-                if (tab.dataset.mode === "quiz") loadNextQuiz();
+                if (tab.dataset.mode === "quiz") startQuizSession();
                 if (tab.dataset.mode === "flashcards") loadNextFlash();
                 if (tab.dataset.mode === "exercises") reviewExercise();
                 if (tab.dataset.mode === "dashboard") loadDashboard();
@@ -660,21 +661,25 @@
                 const data = await res.json();
                 if (!res.ok) { flash(data.error, true); $("quiz-area").innerHTML = ""; return; }
                 flash(`${data.added} question(s) générée(s) pour « ${data.scope} ».`, false);
-                await loadNextQuiz();
+                startQuizSession();
             } catch (err) { flash("Erreur réseau.", true); $("quiz-area").innerHTML = ""; }
             finally { btn.disabled = false; }
         };
         $("gen-quiz-btn").addEventListener("click", generateQuiz);
 
         let quizOptions = [];
+        let quizTotal = null;
 
-        const renderQuiz = (card) => {
+        const startQuizSession = () => { quizTotal = null; loadNextQuiz(); };
+
+        const renderQuiz = (card, pos, total) => {
             quizOptions = card.options;
             const opts = card.options.map((o, i) =>
                 `<label class="opt" data-i="${i}"><input type="checkbox" name="quiz-opt" value="${i}"> ${esc(o)}</label>`
             ).join("");
+            const counter = total ? `<div class="q-counter">Question ${pos} / ${total}</div>` : "";
             $("quiz-area").innerHTML =
-                `<div class="answer">${sourceChip(card.document)}<div class="card-question">${esc(card.question)}</div>` +
+                `<div class="answer">${counter}${sourceChip(card.document)}<div class="card-question">${esc(card.question)}</div>` +
                 `<div class="hint">Coche toutes les bonnes réponses (une ou plusieurs).</div>` +
                 `<div class="options">${opts}</div>` +
                 `<button id="submit-quiz" data-id="${card.id}">Valider</button></div>`;
@@ -690,12 +695,15 @@
             const data = await res.json();
             showQuizProgress(data.progress);
             if (!data.card) {
+                quizTotal = null;
                 emptyState("quiz-area",
                     "Aucune question à réviser pour l'instant.",
                     {label: "Générer un QCM", onClick: generateQuiz});
                 return;
             }
-            renderQuiz(data.card);
+            if (quizTotal === null) quizTotal = data.progress.due;
+            const pos = quizTotal - data.progress.due + 1;
+            renderQuiz(data.card, pos, quizTotal);
         };
 
         const submitQuiz = async (e) => {
