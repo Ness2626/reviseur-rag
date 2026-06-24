@@ -4,6 +4,18 @@ Un assistant de révision qui lit tes cours en PDF et te fait réviser dessus. T
 
 L'idée n'est pas seulement de retrouver l'information (ça, un chatbot le fait déjà) mais de la mémoriser : les questions sont générées automatiquement depuis tes propres documents, tes réponses libres sont corrigées, et la révision suit un planning type Anki.
 
+## Aperçu
+
+| Q&A sourcé | QCM corrigé | Tableau de bord |
+|:---:|:---:|:---:|
+| ![Q&A](screenshots/01-qa.png) | ![QCM](screenshots/03-qcm-corrige.png) | ![Dashboard](screenshots/06-dashboard.png) |
+
+| Flashcards | Exercices (calcul vérifié) |
+|:---:|:---:|
+| ![Flashcards](screenshots/04-flashcards.png) | ![Exercices](screenshots/05-exercices.png) |
+
+*Captures régénérables avec `python capture_screenshots.py` (app lancée + Chromium Playwright).*
+
 ## Fonctionnalités
 
 - **Q&A** — question en langage naturel, réponse construite à partir des passages les plus proches, avec citation des sources (fichier + page).
