@@ -11,7 +11,7 @@ L'idée n'est pas seulement de retrouver l'information (ça, un chatbot le fait 
 - **Interroge-moi** — le système génère des cartes question/réponse, t'interroge, note ta réponse de 0 à 5 (correction par l'IA) et la replanifie avec l'algorithme SM-2.
 - **QCM** — questions à choix multiples générées depuis tes cours, avec une ou plusieurs bonnes réponses (cases à cocher, correction tout-ou-rien) et une explication systématique (pourquoi la bonne est correcte, pourquoi les autres sont fausses). Bonne réponse → carte espacée, mauvaise → carte revue dès le lendemain (même planning SM-2).
 - **Flashcards** — révision en autonomie du même jeu de cartes que « Interroge-moi » : on révèle la réponse et on s'auto-note (Raté / Difficile / Bien / Facile), sans appel à l'IA. La note alimente le SM-2.
-- **Tableau de bord** — statistiques de révision : maturité des cartes (nouvelles → maîtrisées), activité par jour, répartition par document, et une heatmap des échéances à venir. Filtrable par document.
+- **Tableau de bord** — statistiques de révision : maturité des cartes (nouvelles → maîtrisées), activité par jour, répartition par document, et une heatmap des échéances à venir. Filtrable par document. En tête, une **bande de recommandation** diagnostique l'état du deck (cartes en retard, document le plus faible) et propose un bouton qui lance directement la révision ciblée — diagnostic par règles, sans appel à l'IA.
 
 ## Comment ça marche
 

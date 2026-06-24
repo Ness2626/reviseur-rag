@@ -240,6 +240,20 @@
         .scope-line { color: var(--muted); font-size: .8rem; margin: -.4rem 0 1.1rem; }
         .scope-line b { color: var(--ink); font-weight: 600; }
 
+        .insight {
+            display: flex; align-items: center; gap: .9rem; margin-bottom: 1rem;
+            padding: .95rem 1.1rem; border-radius: 12px;
+            background: linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--accent) 12%, transparent));
+            border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+        }
+        .insight-ic { flex: none; width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center;
+            background: var(--accent); color: #fff; }
+        .insight-ic svg { width: 20px; height: 20px; }
+        .insight-text { flex: 1; font-size: .92rem; line-height: 1.4; }
+        .insight-text b { color: var(--accent-dark); }
+        .insight button { flex: none; }
+        @media (max-width: 600px) { .insight { flex-wrap: wrap; } .insight button { width: 100%; } }
+
         .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
         .dash-card { border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; background: var(--field); }
         .dash-card.dash-wide { grid-column: 1 / -1; }
@@ -367,6 +381,7 @@
 
         <div class="panel" id="panel-dashboard">
             <div id="dash-empty" class="empty" style="display:none"></div>
+            <div id="dash-insight" class="insight" style="display:none"></div>
             <div class="dash-grid" id="dash-grid">
                 <div class="dash-card">
                     <h3>Maturité des cartes</h3>
@@ -765,7 +780,48 @@
             }).join("");
         };
 
+        const INSIGHT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.5" fill="currentColor"/></svg>';
+        const DONE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+
+        const goReview = (doc, mode) => {
+            $("document").value = (doc === "corpus" || !doc) ? "" : doc;
+            document.querySelector(`.tab[data-mode="${mode}"]`).click();
+        };
+
+        const renderInsight = (data) => {
+            const box = $("dash-insight");
+            const docs = data.by_document;
+            const totalDue = docs.reduce((s, d) => s + d.due, 0);
+            const label = (d) => d === "corpus" ? "tout le corpus" : d;
+
+            if (totalDue === 0) {
+                box.style.display = "";
+                box.innerHTML = `<div class="insight-ic">${DONE_ICON}</div>` +
+                    `<div class="insight-text"><b>Tout est à jour.</b> Aucune carte à réviser pour l'instant — reviens plus tard ou génère de nouvelles cartes.</div>`;
+                return;
+            }
+
+            const focus = docs.filter(d => d.due > 0).sort((a, b) => b.due - a.due)[0];
+            const weak = docs.filter(d => d.reviewed >= 3 && d.success_rate !== null)
+                             .sort((a, b) => a.success_rate - b.success_rate)[0];
+
+            let txt = `Tu as <b>${totalDue} carte(s)</b> à réviser`;
+            if (focus && focus.document !== "corpus") txt += `, surtout dans « <b>${esc(label(focus.document))}</b> »`;
+            txt += ".";
+            if (weak && weak.success_rate < 70) {
+                txt += ` Ton point faible : « <b>${esc(label(weak.document))}</b> » (${weak.success_rate}% de réussite).`;
+            }
+
+            const mode = focus.due_quiz >= focus.due_open ? "quiz" : "recall";
+            box.style.display = "";
+            box.innerHTML = `<div class="insight-ic">${INSIGHT_ICON}</div>` +
+                `<div class="insight-text">${txt}</div>` +
+                `<button id="insight-cta">Réviser maintenant</button>`;
+            $("insight-cta").addEventListener("click", () => goReview(focus.document, mode));
+        };
+
         const renderDashboard = (data) => {
+            renderInsight(data);
             const ink = cssVar("--ink"), muted = cssVar("--muted"), line = cssVar("--line");
             const accent = cssVar("--accent"), good = cssVar("--good"), bad = cssVar("--bad");
             Chart.defaults.color = muted;
@@ -828,6 +884,7 @@
             $("dash-grid").style.display = hasCards ? "" : "none";
             $("dash-empty").style.display = hasCards ? "none" : "";
             if (!hasCards) {
+                $("dash-insight").style.display = "none";
                 $("dash-empty").innerHTML = EMPTY_ICON + "<p>Aucune carte pour l'instant. Génère un QCM ou des questions pour voir tes statistiques.</p>";
                 return;
             }
