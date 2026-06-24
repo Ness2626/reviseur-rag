@@ -208,3 +208,6 @@ class RagEngine:
 
     def progress(self, document=None, kind=None):
         return store.progress(document, kind=kind)
+
+    def dashboard(self, document=None):
+        return store.dashboard(document)
