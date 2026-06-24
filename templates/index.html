@@ -223,6 +223,13 @@
         .opt.correct .mark { color: var(--good); }
         .opt.wrong .mark { color: var(--bad); }
 
+        .exo-title { font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+            color: var(--accent-dark); margin-bottom: .4rem; }
+        .exo-solution { margin-top: .8rem; border-top: 1px solid var(--line); padding-top: .6rem; }
+        .exo-solution summary { cursor: pointer; font-weight: 600; font-size: .9rem; color: var(--accent-dark); }
+        .exo-solution ol { margin: .6rem 0 0; padding-left: 1.3rem; font-size: .9rem; }
+        .exo-solution li { margin: .35rem 0; }
+
         .empty {
             display: flex; flex-direction: column; align-items: center; text-align: center;
             gap: .9rem; padding: 2.5rem 1rem; color: var(--muted);
@@ -309,6 +316,7 @@
             <button class="tab" data-mode="quiz"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>QCM</span></button>
             <button class="tab" data-mode="recall"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Interroge-moi</span></button>
             <button class="tab" data-mode="flashcards"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg><span>Flashcards</span></button>
+            <button class="tab" data-mode="exercises"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="13" y2="12"/><path d="M15.5 14.5l1.5 1.5 3-3"/></svg><span>Exercices</span></button>
             <button class="tab" data-mode="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span>Tableau de bord</span></button>
         </nav>
 
@@ -377,6 +385,21 @@
             <div class="progress" id="flash-progress">—</div>
             <div class="hint">Même jeu de cartes que « Interroge-moi », révisé en autonomie : révèle la réponse et note-toi (pas de correction IA). Génère d'abord des questions dans l'onglet « Interroge-moi ».</div>
             <div id="flash-area"></div>
+        </div>
+
+        <div class="panel" id="panel-exercises">
+            <div class="recall-actions" style="align-items:center">
+                <label class="field" for="exo-kind">Type :</label>
+                <select id="exo-kind">
+                    <option value="">Aléatoire</option>
+                    <option value="rsa_verify">Vérification de signature RSA</option>
+                    <option value="modexp">Exponentiation modulaire</option>
+                    <option value="rsa_private_exponent">Clé privée RSA (exposant d)</option>
+                </select>
+                <button id="exo-new-btn">Nouvel exercice</button>
+            </div>
+            <div class="hint">Exercices de calcul à solution vérifiée (calculée en Python, jamais par l'IA — donc toujours juste). Correction immédiate + solution étape par étape.</div>
+            <div id="exo-area"></div>
         </div>
 
         <div class="panel" id="panel-dashboard">
@@ -500,6 +523,7 @@
                 if (tab.dataset.mode === "recall") loadNextCard();
                 if (tab.dataset.mode === "quiz") loadNextQuiz();
                 if (tab.dataset.mode === "flashcards") loadNextFlash();
+                if (tab.dataset.mode === "exercises") loadExercise();
                 if (tab.dataset.mode === "dashboard") loadDashboard();
             });
         });
@@ -890,6 +914,77 @@
             }
             renderDashboard(data);
         };
+
+        let currentExo = null;
+
+        const renderExoResult = (data) => {
+            const verdict = data.correct
+                ? '<span class="badge good">Correct ✓</span>'
+                : '<span class="badge bad">Incorrect ✗</span>';
+            const steps = data.solution.map(s => `<li>${esc(s)}</li>`).join("");
+            $("exo-result").innerHTML =
+                `${verdict}` +
+                (data.correct ? "" : `<div class="reference"><b>Réponse attendue :</b> ${esc(String(data.answer))}</div>`) +
+                `<details class="exo-solution" ${data.correct ? "" : "open"}>` +
+                `<summary>Solution étape par étape</summary><ol>${steps}</ol></details>` +
+                `<button id="exo-next" style="margin-top:.8rem">Exercice suivant</button>`;
+            $("exo-next").addEventListener("click", loadExercise);
+        };
+
+        const submitExo = async () => {
+            let given;
+            if (currentExo.format === "mcq") {
+                const checked = document.querySelector('input[name="exo-opt"]:checked');
+                if (!checked) return;
+                given = checked.value;
+            } else {
+                given = $("exo-input").value.trim();
+                if (given === "") return;
+            }
+            $("exo-submit").disabled = true;
+            const res = await fetch("/api/exercise/grade", {
+                method: "POST", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({kind: currentExo.kind, params: currentExo.params, answer: given})
+            });
+            const data = await res.json();
+            if (!res.ok) { flash(data.error, true); return; }
+            renderExoResult(data);
+        };
+
+        const renderExo = (exo) => {
+            currentExo = exo;
+            let input;
+            if (exo.format === "mcq") {
+                input = `<div class="options">` + exo.options.map(o =>
+                    `<label class="opt"><input type="radio" name="exo-opt" value="${o}"> ${esc(String(o))}</label>`
+                ).join("") + `</div>`;
+            } else {
+                input = `<input type="text" id="exo-input" inputmode="numeric" autocomplete="off" placeholder="Ta réponse (un nombre)…" style="margin:.3rem 0 .8rem">`;
+            }
+            $("exo-area").innerHTML =
+                `<div class="answer"><div class="exo-title">${esc(exo.title)}</div>` +
+                `<div class="card-question">${esc(exo.statement)}</div>` +
+                input +
+                `<button id="exo-submit">Valider</button>` +
+                `<div id="exo-result" style="margin-top:.6rem"></div></div>`;
+            $("exo-submit").addEventListener("click", submitExo);
+            const field = $("exo-input");
+            if (field) field.addEventListener("keydown", (ev) => { if (ev.key === "Enter") submitExo(); });
+        };
+
+        const loadExercise = async () => {
+            $("exo-area").innerHTML = '<div class="spinner">Génération…</div>';
+            try {
+                const res = await fetch("/api/exercise/new", {
+                    method: "POST", headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({kind: $("exo-kind").value})
+                });
+                renderExo(await res.json());
+            } catch (err) { flash("Erreur réseau.", true); }
+        };
+
+        $("exo-new-btn").addEventListener("click", loadExercise);
+        $("exo-kind").addEventListener("change", loadExercise);
 
         $("upload-form").addEventListener("submit", async (e) => {
             e.preventDefault();

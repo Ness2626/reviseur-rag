@@ -8,6 +8,7 @@ from sentence_transformers import SentenceTransformer
 from werkzeug.utils import secure_filename
 
 import chatbot
+import exercises
 import store
 from rag_engine import RagEngine
 
@@ -53,6 +54,23 @@ def api_dashboard():
     data = request.get_json(silent=True) or {}
     document = data.get("document") or None
     return jsonify(_engine.dashboard(document))
+
+
+@app.route("/api/exercise/new", methods=["POST"])
+def api_exercise_new():
+    data = request.get_json(silent=True) or {}
+    return jsonify(exercises.new_exercise(data.get("kind") or None))
+
+
+@app.route("/api/exercise/grade", methods=["POST"])
+def api_exercise_grade():
+    data = request.get_json(silent=True) or {}
+    kind = data.get("kind")
+    params = data.get("params")
+    if not kind or not isinstance(params, dict):
+        return jsonify({"error": "Exercice invalide."}), 400
+    result = exercises.grade(kind, params, data.get("answer"))
+    return jsonify(result), (400 if "error" in result else 200)
 
 
 @app.route("/api/ask", methods=["POST"])
