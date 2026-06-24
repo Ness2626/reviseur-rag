@@ -29,6 +29,15 @@ def main():
         page.wait_for_selector("#result .answer", timeout=60000)
         page.screenshot(path=str(OUT_DIR / "01-qa.png"))
 
+        # Feynman : expliquer un concept (volontairement imparfait) et voir la critique
+        _open_mode(page, "feynman")
+        page.fill("#feynman-concept", "la signature numérique")
+        page.fill("#feynman-explanation",
+                  "Une signature numérique sert à chiffrer un message pour que personne ne puisse le lire.")
+        page.click("#feynman-btn")
+        page.wait_for_selector("#feynman-area .answer", timeout=60000)
+        page.screenshot(path=str(OUT_DIR / "07-feynman.png"), full_page=True)
+
         # QCM : la carte se charge seule ; on coche puis on valide pour montrer ✓/✗ + explication
         _open_mode(page, "quiz")
         page.wait_for_selector("#quiz-area .opt", timeout=30000)

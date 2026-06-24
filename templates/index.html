@@ -198,6 +198,8 @@
             border: 1px solid var(--line); border-radius: 10px; resize: vertical; margin: .3rem 0 .6rem;
             background: var(--field); color: var(--ink);
         }
+        #panel-feynman input[type=text] { width: 100%; margin-bottom: .6rem; }
+        #feynman-area { margin-top: 1rem; }
         .q-counter { font-size: .78rem; font-weight: 600; color: var(--muted); margin-bottom: .5rem; }
         .card-question { font-size: 1.08rem; font-weight: 600; margin: .2rem 0 .8rem; }
         .badge {
@@ -314,6 +316,7 @@
         <nav class="tabs">
             <button class="tab active" data-mode="qa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Q&amp;A</span></button>
             <button class="tab" data-mode="fiche"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span>Fiche</span></button>
+            <button class="tab" data-mode="feynman"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14s-1.5-2-4-2-4 2-4 2"/><path d="M20 14s-1.5-2-4-2"/><circle cx="9" cy="7" r="3"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M9 14v7M9 18h6"/></svg><span>Feynman</span></button>
             <button class="tab" data-mode="quiz"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>QCM</span></button>
             <button class="tab" data-mode="recall"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Interroge-moi</span></button>
             <button class="tab" data-mode="flashcards"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg><span>Flashcards</span></button>
@@ -362,6 +365,14 @@
         <div class="panel" id="panel-fiche">
             <button id="fiche-btn">Générer la fiche de révision</button>
             <div class="hint">Synthétise le document sélectionné (ou tout le corpus) en idées clés, définitions et questions d'auto-test.</div>
+        </div>
+
+        <div class="panel" id="panel-feynman">
+            <input type="text" id="feynman-concept" placeholder="Le concept à expliquer (ex. : la signature RSA)…" autocomplete="off">
+            <textarea id="feynman-explanation" placeholder="Explique ce concept avec tes propres mots, comme à un débutant…"></textarea>
+            <button id="feynman-btn">Vérifier mon explication</button>
+            <div class="hint">Technique Feynman : explique un concept simplement. L'IA confronte ton explication au cours et repère les trous (ce qui est flou, faux ou manquant). Pour comprendre en profondeur, pas juste réciter.</div>
+            <div id="feynman-area"></div>
         </div>
 
         <div class="panel" id="panel-recall">
@@ -567,6 +578,29 @@
                 $("result").innerHTML =
                     `<div class="answer"><div class="qlabel">Fiche — ${data.scope}</div>${md(data.fiche)}</div>`;
             } catch (err) { $("result").innerHTML = ""; flash("Erreur réseau.", true); }
+            finally { btn.disabled = false; }
+        });
+
+        $("feynman-btn").addEventListener("click", async () => {
+            const concept = $("feynman-concept").value.trim();
+            const explanation = $("feynman-explanation").value.trim();
+            if (!concept || !explanation) { flash("Indique un concept et ton explication.", true); return; }
+            const btn = $("feynman-btn");
+            btn.disabled = true;
+            $("feynman-area").innerHTML = '<div class="spinner">Analyse de ton explication…</div>';
+            try {
+                const res = await fetch("/api/feynman", {
+                    method: "POST", headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({concept, explanation, document: $("document").value})
+                });
+                const data = await res.json();
+                if (!res.ok) { $("feynman-area").innerHTML = ""; flash(data.error, true); return; }
+                const sources = (data.sources || []).map(s => `<span>${esc(s)}</span>`).join("");
+                $("feynman-area").innerHTML =
+                    `<div class="answer"><div class="qlabel">Retour sur « ${esc(concept)} »</div>${md(data.feedback)}` +
+                    (sources ? `<div class="sources"><strong>Basé sur :</strong><br>${sources}</div>` : "") +
+                    `</div>`;
+            } catch (err) { $("feynman-area").innerHTML = ""; flash("Erreur réseau.", true); }
             finally { btn.disabled = false; }
         });
 

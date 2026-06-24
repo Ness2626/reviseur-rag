@@ -73,6 +73,15 @@ class RagEngine:
         sources = sorted({chunk.label() for chunk in retrieved})
         return {"answer": answer, "sources": sources}
 
+    def feynman(self, concept, explanation, document=None):
+        with self._lock:
+            retrieved = self._retrieve(concept, document)
+        if not retrieved:
+            return {"error": "Aucun passage pertinent trouvé pour ce concept."}
+        feedback = chatbot.feynman_feedback(self._client, concept, explanation, retrieved)
+        sources = sorted({chunk.label() for chunk in retrieved})
+        return {"feedback": feedback, "sources": sources}
+
     def generate_fiche(self, document=None):
         with self._lock:
             if document:
