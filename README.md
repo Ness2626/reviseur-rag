@@ -1,8 +1,8 @@
 # Réviseur RAG
 
-Un assistant de révision qui lit tes cours en PDF et te fait réviser dessus. Trois usages : poser une question et obtenir une réponse sourcée, générer une fiche de synthèse, ou se faire interroger en répétition espacée — le système pose les questions, corrige tes réponses et reprogramme chaque carte selon ce que tu retiens.
+Un assistant de révision qui lit des cours en PDF et interroge dessus. Trois usages principaux : poser une question et obtenir une réponse sourcée, générer une fiche de synthèse, ou se faire interroger en répétition espacée (le système pose les questions, corrige les réponses et reprogramme chaque carte selon ce qu'on retient).
 
-L'idée n'est pas seulement de retrouver l'information (ça, un chatbot le fait déjà) mais de la mémoriser : les questions sont générées automatiquement depuis tes propres documents, tes réponses libres sont corrigées, et la révision suit un planning type Anki.
+Le but n'est pas juste de retrouver une information (un chatbot le fait déjà), mais de la mémoriser : les questions sont générées depuis les documents fournis, les réponses libres sont corrigées par l'IA, et la révision suit un planning type Anki.
 
 ## Aperçu
 
@@ -18,25 +18,25 @@ L'idée n'est pas seulement de retrouver l'information (ça, un chatbot le fait 
 
 ## Fonctionnalités
 
-- **Q&A** — question en langage naturel, réponse construite à partir des passages les plus proches, avec citation des sources (fichier + page).
-- **Fiche** — synthèse structurée d'un document : idées clés, définitions, à retenir, questions d'auto-test.
-- **Feynman** — technique d'apprentissage par l'explication : tu expliques un concept avec tes propres mots, l'IA confronte ton explication au cours et repère les trous (ce qui est flou, faux ou manquant), avec des pistes à revoir. Vise la compréhension profonde, pas le rappel.
-- **Interroge-moi** — le système génère des cartes question/réponse, t'interroge, note ta réponse de 0 à 5 (correction par l'IA) et la replanifie avec l'algorithme SM-2.
-- **QCM** — questions à choix multiples générées depuis tes cours, avec une ou plusieurs bonnes réponses (cases à cocher, correction tout-ou-rien) et une explication systématique (pourquoi la bonne est correcte, pourquoi les autres sont fausses). Bonne réponse → carte espacée, mauvaise → carte revue dès le lendemain (même planning SM-2).
-- **Flashcards** — révision en autonomie du même jeu de cartes que « Interroge-moi » : on révèle la réponse et on s'auto-note (Raté / Difficile / Bien / Facile), sans appel à l'IA. La note alimente le SM-2.
-- **Exercices** — exercices de calcul cryptographique (vérification de signature RSA, exponentiation modulaire, calcul de l'exposant privé), générés avec des nombres aléatoires et **corrigés en Python**, jamais par l'IA : la solution est donc toujours juste. Correction immédiate + solution étape par étape. Ce mode cible l'applicatif, là où la génération depuis les PDF ne produirait que de la théorie. La répétition espacée (SM-2) s'applique ici **par type de compétence** : chaque exercice résolu replanifie sa compétence, et « Réviser » propose celle arrivée à échéance.
-- **Tableau de bord** — statistiques de révision : maturité des cartes (nouvelles → maîtrisées), activité par jour, répartition par document, et une heatmap des échéances à venir. Filtrable par document. En tête, une **bande de recommandation** diagnostique l'état du deck (cartes en retard, document le plus faible) et propose un bouton qui lance directement la révision ciblée — diagnostic par règles, sans appel à l'IA.
+- **Q&A** : on pose une question en langage naturel, l'app répond à partir des passages les plus proches et cite ses sources (fichier + page).
+- **Fiche** : synthèse structurée d'un document (idées clés, définitions, à retenir, questions d'auto-test).
+- **Feynman** : on explique un concept avec ses propres mots, l'IA confronte l'explication au cours et pointe ce qui est flou, faux ou manquant, avec des pistes à revoir. L'idée est de tester la compréhension, pas juste le rappel.
+- **Interroge-moi** : le système génère des cartes question/réponse, interroge, note la réponse de 0 à 5 (correction par l'IA) et la replanifie avec l'algorithme SM-2.
+- **QCM** : questions à choix multiples générées depuis les cours, avec une ou plusieurs bonnes réponses (cases à cocher, correction tout-ou-rien) et une explication systématique (pourquoi la bonne est correcte, pourquoi les autres sont fausses). Bonne réponse, la carte est espacée ; mauvaise, elle revient dès le lendemain (même planning SM-2).
+- **Flashcards** : même jeu de cartes que « Interroge-moi », révisé en autonomie. On révèle la réponse et on s'auto-note (Raté / Difficile / Bien / Facile), sans appel à l'IA. La note alimente le SM-2.
+- **Exercices** : exercices de calcul cryptographique (vérification de signature RSA, exponentiation modulaire, calcul de l'exposant privé), générés avec des nombres aléatoires et **corrigés en Python**, jamais par l'IA. La solution est donc toujours juste, avec le détail étape par étape. Ce mode vise l'applicatif, là où générer depuis les PDF ne donnerait que de la théorie. La répétition espacée s'applique ici par type de compétence : chaque exercice résolu replanifie sa compétence, et « Réviser » propose celle arrivée à échéance.
+- **Tableau de bord** : statistiques de révision (maturité des cartes, activité par jour, répartition par document, heatmap des échéances), filtrables par document. En haut, une bande de recommandation diagnostique le deck (cartes en retard, document le plus faible) et propose un bouton qui lance la révision ciblée. Ce diagnostic se fait par règles simples, sans appel à l'IA.
 
 ## Comment ça marche
 
 Le pipeline RAG (Retrieval-Augmented Generation) :
 
-1. **Découpage** — chaque PDF est lu avec `pypdf` et coupé en passages d'environ 800 mots, avec un recouvrement de 150 mots pour ne pas perdre le fil entre deux passages.
-2. **Indexation** — chaque passage est encodé en vecteur avec le modèle `all-MiniLM-L6-v2` (sentence-transformers). L'index est mis en cache dans `index_cache.pkl` : seuls les fichiers modifiés sont réencodés.
-3. **Recherche** — la question est encodée puis comparée aux passages par similarité cosinus ; les 4 plus proches forment le contexte.
-4. **Génération** — ce contexte est envoyé à un modèle Groq (`llama-3.3-70b`) qui rédige la réponse en français et cite les sources.
+1. **Découpage** : chaque PDF est lu avec `pypdf` et coupé en passages d'environ 800 mots, avec 150 mots de recouvrement pour ne pas perdre le fil entre deux passages.
+2. **Indexation** : chaque passage est encodé en vecteur avec le modèle `all-MiniLM-L6-v2` (sentence-transformers). L'index est mis en cache dans `index_cache.pkl`, donc seuls les fichiers modifiés sont réencodés.
+3. **Recherche** : la question est encodée puis comparée aux passages par similarité cosinus ; les 4 plus proches forment le contexte.
+4. **Génération** : ce contexte est envoyé à un modèle Groq (`llama-3.3-70b`) qui rédige la réponse en français et cite les sources.
 
-Pour la répétition espacée, chaque carte garde son état SM-2 (facilité, intervalle, prochaine échéance) dans une base SQLite. La note 0–5 met à jour cet état : bonne réponse → l'intervalle s'allonge, mauvaise → la carte revient dès le lendemain. Seules les cartes arrivées à échéance sont proposées à la révision. Chaque révision est aussi journalisée (table `reviews`), ce qui alimente la courbe d'activité du tableau de bord. Les graphes sont rendus côté client avec Chart.js, la heatmap d'échéances en CSS pur.
+Pour la répétition espacée, chaque carte garde son état SM-2 (facilité, intervalle, prochaine échéance) dans une base SQLite. La note de 0 à 5 met à jour cet état : si la réponse est bonne, l'intervalle s'allonge ; si elle est mauvaise, la carte revient dès le lendemain. Seules les cartes arrivées à échéance sont proposées à la révision. Chaque révision est aussi journalisée (table `reviews`), ce qui alimente la courbe d'activité du tableau de bord. Les graphes sont rendus côté client avec Chart.js, la heatmap des échéances en CSS pur.
 
 ## Installation
 
@@ -91,23 +91,23 @@ docker run -p 5000:5000 -e GROQ_API_KEY=ta_cle_ici \
 pytest
 ```
 
-Les tests couvrent l'algorithme SM-2 : calcul des intervalles, réinitialisation après un échec, plancher du facteur de facilité, validation des notes.
+Les tests couvrent l'algorithme SM-2 (calcul des intervalles, réinitialisation après un échec, plancher du facteur de facilité, validation des notes), la persistance SQLite (cartes, planning, compétences) et les solveurs d'exercices (réponses recalculées et vérifiées).
 
 ## Structure
 
-- `app.py` — serveur Flask, endpoints JSON
-- `rag_engine.py` — moteur RAG : index, recherche, orchestration des trois modes
-- `chatbot.py` — lecture PDF, embeddings, appels au modèle, et version ligne de commande
-- `scheduler.py` — algorithme de répétition espacée SM-2 (fonction pure, testée)
-- `exercises.py` — générateurs d'exercices de calcul crypto à solution vérifiée (déterministe, sans LLM)
-- `store.py` — persistance SQLite des cartes et de leur planning
-- `templates/index.html` — interface web
+- `app.py` : serveur Flask, endpoints JSON
+- `rag_engine.py` : moteur RAG (index, recherche, orchestration des modes de révision)
+- `chatbot.py` : lecture PDF, embeddings, appels au modèle, et version ligne de commande
+- `scheduler.py` : algorithme de répétition espacée SM-2 (fonction pure, testée)
+- `exercises.py` : générateurs d'exercices de calcul crypto à solution vérifiée (déterministe, sans LLM)
+- `store.py` : persistance SQLite des cartes et de leur planning
+- `templates/index.html` : interface web
 
 ## Limites connues
 
-- La recherche se fait en mémoire avec numpy : largement suffisant pour quelques documents, mais à remplacer par un index vectoriel dédié (FAISS) si le corpus grossit.
+- La recherche se fait en mémoire avec numpy : suffisant pour quelques documents, mais à remplacer par un index vectoriel dédié (FAISS) si le corpus grossit.
 - Pas d'authentification ni de comptes : le projet est pensé pour un usage local.
 
 ## Licence
 
-MIT — voir [LICENSE](LICENSE).
+Sous licence MIT, voir [LICENSE](LICENSE).
