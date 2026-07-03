@@ -32,6 +32,13 @@ RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTr
 # Placé APRÈS l'install des deps : modifier le code n'invalide pas la couche pip (rebuild rapide).
 COPY . .
 
+# Utilisateur non privilégié (V7) : le process ne tourne plus en root dans le conteneur,
+# ce qui limite l'impact d'une éventuelle compromission. uid 1000 = uid du premier
+# utilisateur sur l'hôte → les volumes montés restent écrivables des deux côtés.
+# chown sur /app : l'appli écrit dans docs/ (uploads), le cache d'index, revision.db
+# et .cache/ (modèle d'embeddings pré-téléchargé pendant le build, en root).
+RUN useradd --uid 1000 --create-home appuser && chown -R appuser:appuser /app
+USER appuser
 
 # HOST=0.0.0.0 : Flask doit écouter sur toutes les interfaces, pas seulement 127.0.0.1,
 # sinon le serveur n'est pas joignable depuis l'extérieur du conteneur.
