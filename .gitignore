@@ -1,8 +1,11 @@
 # Secrets
 .env
+.cache_key
 
 # Index persisté (regénéré au démarrage)
-index_cache.pkl
+index_cache.json
+index_cache.npz
+index_cache.hmac
 
 # Base SQLite des cartes de révision
 revision.db

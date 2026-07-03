@@ -2,6 +2,7 @@
 # Réduit la taille du contexte de build et évite de fuiter des secrets.
 
 .env
+.cache_key
 .git
 __pycache__/
 *.pyc
@@ -11,7 +12,9 @@ venv-rag/
 *.egg-info/
 
 # État local regénéré au démarrage : pas besoin de l'embarquer.
-index_cache.pkl
+index_cache.json
+index_cache.npz
+index_cache.hmac
 revision.db
 
 # PDF uploadés en local (l'utilisateur fournit les siens via le volume / l'UI).

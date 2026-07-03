@@ -1,7 +1,8 @@
 import hashlib
+import hmac
 import json
 import os
-import pickle
+import secrets
 import sys
 from dataclasses import dataclass
 from glob import glob
@@ -19,7 +20,9 @@ GROQ_MAX_RETRIES = 5
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 150
 TOP_K = 4
-CACHE_PATH = "index_cache.pkl"
+CACHE_PATH = "index_cache"
+CACHE_KEY_PATH = ".cache_key"
+CACHE_KEY_SIZE_BYTES = 32
 
 
 @dataclass
@@ -77,16 +80,85 @@ def file_signature(path):
     return digest.hexdigest()
 
 
-def load_cache(cache_path=CACHE_PATH):
-    if os.path.exists(cache_path):
-        with open(cache_path, "rb") as handle:
-            return pickle.load(handle)
-    return {}
+def _cache_files(cache_path=CACHE_PATH):
+    return f"{cache_path}.json", f"{cache_path}.npz", f"{cache_path}.hmac"
 
 
-def save_cache(cache, cache_path=CACHE_PATH):
-    with open(cache_path, "wb") as handle:
-        pickle.dump(cache, handle)
+def _load_or_create_cache_key(key_path=CACHE_KEY_PATH):
+    if os.path.exists(key_path):
+        with open(key_path, "rb") as handle:
+            key = handle.read()
+        if len(key) == CACHE_KEY_SIZE_BYTES:
+            return key
+    key = secrets.token_bytes(CACHE_KEY_SIZE_BYTES)
+    descriptor = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(key)
+    return key
+
+
+def _compute_cache_hmac(key, meta_bytes, embeddings_bytes):
+    mac = hmac.new(key, digestmod=hashlib.sha256)
+    mac.update(len(meta_bytes).to_bytes(8, "big"))
+    mac.update(meta_bytes)
+    mac.update(embeddings_bytes)
+    return mac.hexdigest()
+
+
+def load_cache(cache_path=CACHE_PATH, key_path=CACHE_KEY_PATH):
+    meta_path, embeddings_path, hmac_path = _cache_files(cache_path)
+    if not all(os.path.exists(p) for p in (meta_path, embeddings_path, hmac_path, key_path)):
+        return {}
+    with open(key_path, "rb") as handle:
+        key = handle.read()
+    with open(meta_path, "rb") as handle:
+        meta_bytes = handle.read()
+    with open(embeddings_path, "rb") as handle:
+        embeddings_bytes = handle.read()
+    with open(hmac_path, encoding="ascii") as handle:
+        stored_hmac = handle.read().strip()
+    expected_hmac = _compute_cache_hmac(key, meta_bytes, embeddings_bytes)
+    if not hmac.compare_digest(stored_hmac, expected_hmac):
+        print("Cache d'index rejeté : signature HMAC invalide. Reconstruction depuis les PDF.", file=sys.stderr)
+        return {}
+    return _decode_cache(meta_bytes, embeddings_path)
+
+
+def _decode_cache(meta_bytes, embeddings_path):
+    meta = json.loads(meta_bytes)
+    cache = {}
+    with np.load(embeddings_path, allow_pickle=False) as arrays:
+        for source, entry in meta.items():
+            chunks = [Chunk(c["text"], c["source"], c["page"]) for c in entry["chunks"]]
+            cache[source] = {
+                "signature": entry["signature"],
+                "chunks": chunks,
+                "embeddings": arrays[entry["array"]],
+            }
+    return cache
+
+
+def save_cache(cache, cache_path=CACHE_PATH, key_path=CACHE_KEY_PATH):
+    meta_path, embeddings_path, hmac_path = _cache_files(cache_path)
+    meta = {}
+    arrays = {}
+    for index, (source, entry) in enumerate(cache.items()):
+        array_key = f"emb_{index}"
+        meta[source] = {
+            "signature": entry["signature"],
+            "array": array_key,
+            "chunks": [{"text": c.text, "source": c.source, "page": c.page} for c in entry["chunks"]],
+        }
+        arrays[array_key] = np.asarray(entry["embeddings"])
+    meta_bytes = json.dumps(meta, ensure_ascii=False).encode("utf-8")
+    with open(meta_path, "wb") as handle:
+        handle.write(meta_bytes)
+    np.savez(embeddings_path, **arrays)
+    with open(embeddings_path, "rb") as handle:
+        embeddings_bytes = handle.read()
+    digest = _compute_cache_hmac(_load_or_create_cache_key(key_path), meta_bytes, embeddings_bytes)
+    with open(hmac_path, "w", encoding="ascii") as handle:
+        handle.write(digest)
 
 
 def build_index_cached(paths, model, cache_path=CACHE_PATH):
