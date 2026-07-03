@@ -28,7 +28,7 @@ store.init_db()
 store.ensure_skills(exercises.KINDS)
 EXERCISE_CORRECT_GRADE = 5
 EXERCISE_WRONG_GRADE = 1
-_engine = RagEngine(Groq(api_key=_api_key), _model)
+_engine = RagEngine(Groq(api_key=_api_key, max_retries=chatbot.GROQ_MAX_RETRIES), _model)
 _engine.rebuild()
 print(f"Index prêt : {len(_engine.documents())} document(s).")
 

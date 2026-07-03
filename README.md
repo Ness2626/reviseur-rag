@@ -34,7 +34,7 @@ Le pipeline RAG (Retrieval-Augmented Generation) :
 1. **Découpage** : chaque PDF est lu avec `pypdf` et coupé en passages d'environ 800 mots, avec 150 mots de recouvrement pour ne pas perdre le fil entre deux passages.
 2. **Indexation** : chaque passage est encodé en vecteur avec le modèle `all-MiniLM-L6-v2` (sentence-transformers). L'index est mis en cache dans `index_cache.pkl`, donc seuls les fichiers modifiés sont réencodés.
 3. **Recherche** : la question est encodée puis comparée aux passages par similarité cosinus ; les 4 plus proches forment le contexte.
-4. **Génération** : ce contexte est envoyé à un modèle Groq (`llama-3.3-70b`) qui rédige la réponse en français et cite les sources.
+4. **Génération** : ce contexte est envoyé à un modèle Groq (`openai/gpt-oss-120b`) qui rédige la réponse en français et cite les sources.
 
 Pour la répétition espacée, chaque carte garde son état SM-2 (facilité, intervalle, prochaine échéance) dans une base SQLite. La note de 0 à 5 met à jour cet état : si la réponse est bonne, l'intervalle s'allonge ; si elle est mauvaise, la carte revient dès le lendemain. Seules les cartes arrivées à échéance sont proposées à la révision. Chaque révision est aussi journalisée (table `reviews`), ce qui alimente la courbe d'activité du tableau de bord. Les graphes sont rendus côté client avec Chart.js, la heatmap des échéances en CSS pur.
 
