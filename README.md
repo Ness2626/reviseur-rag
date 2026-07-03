@@ -32,7 +32,7 @@ Le but n'est pas juste de retrouver une information (un chatbot le fait déjà),
 Le pipeline RAG (Retrieval-Augmented Generation) :
 
 1. **Découpage** : chaque PDF est lu avec `pypdf` et coupé en passages d'environ 800 mots, avec 150 mots de recouvrement pour ne pas perdre le fil entre deux passages.
-2. **Indexation** : chaque passage est encodé en vecteur avec le modèle `all-MiniLM-L6-v2` (sentence-transformers). L'index est mis en cache dans `index_cache.pkl`, donc seuls les fichiers modifiés sont réencodés.
+2. **Indexation** : chaque passage est encodé en vecteur avec le modèle `all-MiniLM-L6-v2` (sentence-transformers). L'index est mis en cache sur disque (`index_cache.json` + `index_cache.npz`, authentifiés par une signature HMAC), donc seuls les fichiers modifiés sont réencodés.
 3. **Recherche** : la question est encodée puis comparée aux passages par similarité cosinus ; les 4 plus proches forment le contexte.
 4. **Génération** : ce contexte est envoyé à un modèle Groq (`openai/gpt-oss-120b`) qui rédige la réponse en français et cite les sources.
 
