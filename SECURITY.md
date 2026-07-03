@@ -51,7 +51,7 @@ dans un navigateur, et dépend d'une **chaîne d'approvisionnement** (PyPI, CDN,
 | XSS via la réponse du LLM | PDF adversarial → injection de prompt → HTML dans la sortie | Sanitisation DOMPurify (SRI) + échappement systématique (V2) | — |
 | Fuite de la clé d'API | commit accidentel, image Docker | `.env` exclu de git et de `.dockerignore` | — |
 | Upload abusif (DoS, écrasement) | endpoint `/api/upload` | `secure_filename`, extension `.pdf`, taille max 50 Mo, magic bytes `%PDF`, refus des collisions (V3) | — |
-| Compromission d'une dépendance | PyPI, CDN | — | V4/V5 : versions épinglées, audit, SRI |
+| Compromission d'une dépendance | PyPI, CDN | Côté CDN : versions épinglées + SRI (V5) | V4 : versions PyPI épinglées, audit |
 | Corrigé d'exercice erroné | hallucination du LLM | Les exercices crypto sont **calculés en Python**, jamais corrigés par le LLM (`exercises.py`) | — |
 | Réponses pédagogiques trompeuses | hallucination du LLM | Réponses sourcées (fichier + page), avertissement IA dans l'interface | — |
 | Accès réseau non authentifié | `HOST=0.0.0.0` | Bind sur `127.0.0.1` par défaut | Limite assumée (voir plus bas) |
@@ -111,10 +111,16 @@ fragmenterait la progression entre deux noms pour un même cours.*
 installation récupère la dernière version publiée, sans contrôle (exposition supply chain).
 *Correction prévue : versions épinglées, audit automatisé (`pip-audit`) en CI.*
 
-**V5 — Bibliothèque JS chargée d'un CDN sans intégrité** · ⏳ · CWE-829
-`templates/index.html:454` — `marked` est chargé depuis jsdelivr sans attribut
-`integrity` : une compromission du CDN injecterait du JS arbitraire dans l'application.
-*Correction prévue : copie locale de la bibliothèque, ou Subresource Integrity (SRI).*
+**V5 — Bibliothèque JS chargée d'un CDN sans intégrité** · ✅ corrigé (juillet 2026) · CWE-829
+`templates/index.html` — `marked` était chargé depuis jsdelivr sans version épinglée ni
+attribut `integrity`, et Chart.js sans `integrity` : une compromission du CDN ou du paquet
+npm aurait injecté du JS arbitraire dans l'application (et pu neutraliser DOMPurify, V2).
+*Correction : les trois bibliothèques (marked 18.0.5, DOMPurify 3.4.11, Chart.js 4.4.1)
+sont épinglées à une version exacte et portent un attribut `integrity` sha384 calculé
+depuis les fichiers réellement servis, plus `crossorigin="anonymous"`. Chart.js référence
+l'artefact publié `dist/chart.umd.js` plutôt que la variante `.min.js` re-générée à la
+volée par jsdelivr, pour garantir la stabilité du hash. Le navigateur refuse tout script
+dont le contenu ne correspond plus au hash.*
 
 ### Priorité basse
 
