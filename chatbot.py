@@ -73,7 +73,7 @@ def build_index(chunks, model):
 
 
 def file_signature(path):
-    digest = hashlib.md5()
+    digest = hashlib.sha256()
     with open(path, "rb") as handle:
         for block in iter(lambda: handle.read(8192), b""):
             digest.update(block)
