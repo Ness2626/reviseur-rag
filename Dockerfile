@@ -32,6 +32,7 @@ RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTr
 # Placé APRÈS l'install des deps : modifier le code n'invalide pas la couche pip (rebuild rapide).
 COPY . .
 
+
 # HOST=0.0.0.0 : Flask doit écouter sur toutes les interfaces, pas seulement 127.0.0.1,
 # sinon le serveur n'est pas joignable depuis l'extérieur du conteneur.
 # (app.py lit cette variable : host=os.getenv("HOST", "127.0.0.1"))
@@ -43,5 +44,10 @@ ENV HOST=0.0.0.0 \
 EXPOSE 5000
 
 # Commande lancée au démarrage du conteneur. Forme "exec" (liste JSON) recommandée :
-# le process Python devient PID 1 et reçoit correctement les signaux (Ctrl+C / docker stop).
-CMD ["python", "app.py"]
+# le process devient PID 1 et reçoit correctement les signaux (Ctrl+C / docker stop).
+# gunicorn remplace le serveur de dev Flask (V6) : 1 worker car l'index RAG et le modèle
+# d'embeddings vivent en mémoire (plusieurs workers = index dupliqués et divergents),
+# 4 threads pour servir l'UI pendant les appels LLM, timeout large pour les générations.
+# --preload : l'app est chargée avant le fork → une erreur de config (ex: GROQ_API_KEY
+# absente) arrête le conteneur immédiatement au lieu de relancer le worker en boucle.
+CMD ["gunicorn", "--preload", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "120", "app:app"]
