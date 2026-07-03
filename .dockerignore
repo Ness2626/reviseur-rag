@@ -18,4 +18,7 @@ index_cache.hmac
 revision.db
 
 # PDF uploadés en local (l'utilisateur fournit les siens via le volume / l'UI).
+# Les PDF racine aussi : ce sont des documents de cours personnels, pas du code —
+# sans ça, discover_pdfs() les indexe et ils partent avec l'image.
 docs/*
+*.pdf
