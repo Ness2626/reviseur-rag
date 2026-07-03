@@ -14,7 +14,8 @@ from sentence_transformers import SentenceTransformer
 
 DOCS_DIR = "docs"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = "openai/gpt-oss-120b"
+GROQ_MAX_RETRIES = 5
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 150
 TOP_K = 4
@@ -314,7 +315,7 @@ def main():
     chunks, embeddings = build_index_cached(paths, model)
     print(f"{len(chunks)} chunks indexés.")
 
-    client = Groq(api_key=api_key)
+    client = Groq(api_key=api_key, max_retries=GROQ_MAX_RETRIES)
 
     print("\nChatbot prêt. Posez vos questions (tapez 'quit' ou Ctrl+C pour quitter).\n")
     while True:
