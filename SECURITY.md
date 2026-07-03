@@ -50,7 +50,7 @@ dans un navigateur, et dépend d'une **chaîne d'approvisionnement** (PyPI, CDN,
 | Exécution de code via le cache d'index | fichier de cache altéré | Format inerte (JSON + npz) signé HMAC-SHA256, rejet si signature invalide (V1) | — |
 | XSS via la réponse du LLM | PDF adversarial → injection de prompt → HTML dans la sortie | Sanitisation DOMPurify (SRI) + échappement systématique (V2) | — |
 | Fuite de la clé d'API | commit accidentel, image Docker | `.env` exclu de git et de `.dockerignore` | — |
-| Upload abusif (DoS, écrasement) | endpoint `/api/upload` | `secure_filename`, extension `.pdf` vérifiée | V3 : taille max, magic bytes, non-écrasement |
+| Upload abusif (DoS, écrasement) | endpoint `/api/upload` | `secure_filename`, extension `.pdf`, taille max 50 Mo, magic bytes `%PDF`, refus des collisions (V3) | — |
 | Compromission d'une dépendance | PyPI, CDN | — | V4/V5 : versions épinglées, audit, SRI |
 | Corrigé d'exercice erroné | hallucination du LLM | Les exercices crypto sont **calculés en Python**, jamais corrigés par le LLM (`exercises.py`) | — |
 | Réponses pédagogiques trompeuses | hallucination du LLM | Réponses sourcées (fichier + page), avertissement IA dans l'interface | — |
@@ -93,15 +93,18 @@ désormais toutes par `esc()`. La sortie d'un LLM est traitée comme une entrée
 
 ### Priorité moyenne
 
-**V3 — Durcissement insuffisant de l'upload PDF** · ⏳ · CWE-400, CWE-434
-`app.py:209-219` — trois manques :
-- pas de `MAX_CONTENT_LENGTH` : un upload arbitrairement volumineux est accepté
+**V3 — Durcissement insuffisant de l'upload PDF** · ✅ corrigé (juillet 2026) · CWE-400, CWE-434
+`app.py` — trois manques :
+- pas de `MAX_CONTENT_LENGTH` : un upload arbitrairement volumineux était accepté
   (épuisement disque/mémoire) ;
-- seule l'extension est vérifiée, pas les magic bytes `%PDF` : n'importe quel fichier
-  renommé passe, puis est parsé par `pypdf` ;
-- un fichier existant du même nom est écrasé silencieusement.
-*Correction prévue : limite de taille Flask, vérification des premiers octets, refus ou
-renommage en cas de collision.*
+- seule l'extension était vérifiée, pas les magic bytes `%PDF` : n'importe quel fichier
+  renommé passait, puis était parsé par `pypdf` ;
+- un fichier existant du même nom était écrasé silencieusement.
+*Correction : `MAX_CONTENT_LENGTH` fixé à 50 Mo (handler 413 avec message JSON clair),
+vérification des magic bytes `%PDF` avant acceptation, et refus explicite (HTTP 409) si
+un fichier du même nom existe déjà — le refus a été préféré au renommage automatique car
+les cartes de révision sont rattachées au nom du document : un renommage silencieux
+fragmenterait la progression entre deux noms pour un même cours.*
 
 **V4 — Dépendances non épinglées** · ⏳ · CWE-1104
 `requirements.txt` ne fixe aucune version. Le build n'est pas reproductible et chaque

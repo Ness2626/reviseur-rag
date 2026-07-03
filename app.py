@@ -12,7 +12,11 @@ import exercises
 import store
 from rag_engine import RagEngine
 
+MAX_UPLOAD_MB = 50
+PDF_MAGIC = b"%PDF"
+
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
 load_dotenv()
 _api_key = os.getenv("GROQ_API_KEY")
@@ -206,6 +210,11 @@ def api_quiz_answer():
     return jsonify(result), (400 if "error" in result else 200)
 
 
+@app.errorhandler(413)
+def upload_too_large(_error):
+    return jsonify({"error": f"Fichier trop volumineux (maximum {MAX_UPLOAD_MB} Mo)."}), 413
+
+
 @app.route("/api/upload", methods=["POST"])
 def api_upload():
     file = request.files.get("pdf")
@@ -214,7 +223,14 @@ def api_upload():
     filename = secure_filename(file.filename)
     if not filename.lower().endswith(".pdf"):
         return jsonify({"error": "Seuls les fichiers PDF sont acceptés."}), 400
-    file.save(os.path.join(chatbot.DOCS_DIR, filename))
+    header = file.stream.read(len(PDF_MAGIC))
+    file.stream.seek(0)
+    if header != PDF_MAGIC:
+        return jsonify({"error": "Ce fichier n'est pas un PDF valide."}), 400
+    destination = os.path.join(chatbot.DOCS_DIR, filename)
+    if os.path.exists(destination):
+        return jsonify({"error": f"« {filename} » existe déjà. Renomme le fichier ou supprime l'ancien de docs/."}), 409
+    file.save(destination)
     _engine.rebuild()
     return jsonify({"message": f"« {filename} » ajouté et indexé.", "documents": _engine.documents()})
 
