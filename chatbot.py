@@ -240,8 +240,11 @@ def generate_quiz(client, chunks, count, scope_label):
         'Réponds UNIQUEMENT avec un objet JSON de la forme : '
         '{"cards": [{"question": "...", "options": ["...", "...", "...", "..."], "correct": ["...", "..."], "explanation": "..."}]}. '
         "Le champ correct est la liste des propositions exactes (au caractère près) qui sont vraies. "
-        "Le champ explanation explique pourquoi chaque bonne réponse est correcte ET pourquoi chacune "
-        "des autres propositions est fausse, en citant chaque distracteur.\n\n"
+        "Le champ explanation (2 à 3 phrases max) explique la réponse comme le ferait un bon prof, "
+        "en variant l'angle d'une question à l'autre : tantôt développer pourquoi la bonne réponse "
+        "est vraie, tantôt illustrer par un exemple concret du cours, tantôt démonter seulement le "
+        "distracteur le plus piégeux. Ne passe pas systématiquement chaque proposition en revue et "
+        "bannis les formules mécaniques du type « les autres options sont incorrectes car ».\n\n"
         f"Contexte :\n{context}"
     )
     response = client.chat.completions.create(
