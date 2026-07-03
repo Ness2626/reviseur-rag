@@ -51,7 +51,7 @@ dans un navigateur, et dépend d'une **chaîne d'approvisionnement** (PyPI, CDN,
 | XSS via la réponse du LLM | PDF adversarial → injection de prompt → HTML dans la sortie | Sanitisation DOMPurify (SRI) + échappement systématique (V2) | — |
 | Fuite de la clé d'API | commit accidentel, image Docker | `.env` exclu de git et de `.dockerignore` | — |
 | Upload abusif (DoS, écrasement) | endpoint `/api/upload` | `secure_filename`, extension `.pdf`, taille max 50 Mo, magic bytes `%PDF`, refus des collisions (V3) | — |
-| Compromission d'une dépendance | PyPI, CDN | Côté CDN : versions épinglées + SRI (V5) | V4 : versions PyPI épinglées, audit |
+| Compromission d'une dépendance | PyPI, CDN | CDN : versions épinglées + SRI (V5) · PyPI : versions épinglées + `pip-audit` (V4) | — |
 | Corrigé d'exercice erroné | hallucination du LLM | Les exercices crypto sont **calculés en Python**, jamais corrigés par le LLM (`exercises.py`) | — |
 | Réponses pédagogiques trompeuses | hallucination du LLM | Réponses sourcées (fichier + page), avertissement IA dans l'interface | — |
 | Accès réseau non authentifié | `HOST=0.0.0.0` | Bind sur `127.0.0.1` par défaut | Limite assumée (voir plus bas) |
@@ -106,10 +106,15 @@ un fichier du même nom existe déjà — le refus a été préféré au renomma
 les cartes de révision sont rattachées au nom du document : un renommage silencieux
 fragmenterait la progression entre deux noms pour un même cours.*
 
-**V4 — Dépendances non épinglées** · ⏳ · CWE-1104
-`requirements.txt` ne fixe aucune version. Le build n'est pas reproductible et chaque
-installation récupère la dernière version publiée, sans contrôle (exposition supply chain).
-*Correction prévue : versions épinglées, audit automatisé (`pip-audit`) en CI.*
+**V4 — Dépendances non épinglées** · ✅ corrigé (juillet 2026) · CWE-1104
+`requirements.txt` ne fixait aucune version. Le build n'était pas reproductible et chaque
+installation récupérait la dernière version publiée, sans contrôle (exposition supply chain).
+*Correction : toutes les dépendances sont épinglées à une version exacte (`==x.y.z`),
+celles validées par la suite de tests. L'audit initial (`pip-audit -r requirements.txt`)
+a immédiatement révélé une vulnérabilité connue dans pypdf 6.13.2 (GHSA-jm82-fx9c-mx94),
+corrigée en épinglant 6.13.3 — audit propre depuis. À relancer manuellement de temps en
+temps : `pip install pip-audit && pip-audit -r requirements.txt` (pas de CI : hors de
+proportion pour un projet mono-développeur).*
 
 **V5 — Bibliothèque JS chargée d'un CDN sans intégrité** · ✅ corrigé (juillet 2026) · CWE-829
 `templates/index.html` — `marked` était chargé depuis jsdelivr sans version épinglée ni
@@ -124,21 +129,29 @@ dont le contenu ne correspond plus au hash.*
 
 ### Priorité basse
 
-**V6 — Serveur de développement Flask en production Docker** · ⏳
-`app.py:223` — `app.run()` lance le serveur de développement Werkzeug, mono-thread et
-non durci, y compris dans le conteneur. *Correction prévue : gunicorn dans l'image Docker.*
+**V6 — Serveur de développement Flask en production Docker** · ✅ corrigé (juillet 2026)
+`app.py` — `app.run()` lançait le serveur de développement Werkzeug, mono-thread et
+non durci, y compris dans le conteneur. *Correction : le conteneur lance gunicorn 26
+(1 worker — l'index RAG et le modèle d'embeddings vivent en mémoire — et 4 threads,
+timeout 120 s pour les générations LLM). `app.run()` reste réservé au lancement local
+en développement (`python app.py`).*
 
-**V7 — Conteneur exécuté en root** · ⏳ · CWE-250
-`Dockerfile` — aucune instruction `USER` : le processus tourne en root dans le conteneur,
-ce qui aggrave l'impact de toute compromission (V1 notamment, via le volume monté).
-*Correction prévue : utilisateur non privilégié dédié.*
+**V7 — Conteneur exécuté en root** · ✅ corrigé (juillet 2026) · CWE-250
+`Dockerfile` — aucune instruction `USER` : le processus tournait en root dans le conteneur,
+ce qui aggravait l'impact de toute compromission (V1 notamment, via le volume monté).
+*Correction : utilisateur dédié `appuser` (uid 1000, non privilégié) avec `chown` sur
+`/app` — les écritures de l'appli (uploads `docs/`, cache d'index, `revision.db`, cache
+du modèle d'embeddings) restent fonctionnelles, et l'uid 1000 correspond à l'utilisateur
+hôte typique pour les volumes montés.*
 
-**V8 — MD5 pour la signature des fichiers** · ⏳ · CWE-328
-`chatbot.py:72` — MD5 sert à détecter les modifications de PDF pour invalider le cache.
-Ce n'est **pas exploitable ici** : aucun adversaire ne gagne quoi que ce soit à produire
-une collision (au pire, un cache réutilisé à tort). On le remplace néanmoins par SHA-256 :
-hygiène, cohérence avec V1, et silence des analyseurs statiques. Distinguer les usages
-sécuritaires et non sécuritaires d'une fonction de hachage fait partie de l'analyse.
+**V8 — MD5 pour la signature des fichiers** · ✅ corrigé (juillet 2026) · CWE-328
+`chatbot.py` — MD5 servait à détecter les modifications de PDF pour invalider le cache.
+Ce n'était **pas exploitable ici** : aucun adversaire ne gagne quoi que ce soit à produire
+une collision (au pire, un cache réutilisé à tort). Remplacé néanmoins par SHA-256 :
+hygiène, cohérence avec V1/V2/V3/V5, et silence des analyseurs statiques. Distinguer les
+usages sécuritaires et non sécuritaires d'une fonction de hachage fait partie de l'analyse.
+*Effet de bord unique et bénin : les signatures stockées changent, donc l'index est
+ré-encodé une fois au prochain démarrage.*
 
 ## Limites assumées
 
