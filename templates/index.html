@@ -452,11 +452,17 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.11/dist/purify.min.js"
+            integrity="sha384-o44XUELLEnv/iSlA1NWxBweqbD4TSR0qgq2VzVsxtkHS989JJjGKSE9vkfo5MN4K"
+            crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
         const $ = (id) => document.getElementById(id);
-        const md = (text) => (window.marked ? marked.parse(text) : text);
         const esc = (s) => { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; };
+        const md = (text) => {
+            if (!window.marked || !window.DOMPurify) return esc(text);
+            return DOMPurify.sanitize(marked.parse(text));
+        };
 
         const TOAST_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
         const TOAST_ERR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
@@ -557,7 +563,7 @@
                 });
                 const data = await res.json();
                 if (!res.ok) { $("result").innerHTML = ""; flash(data.error, true); return; }
-                const sources = data.sources.map(s => `<span>${s}</span>`).join("");
+                const sources = data.sources.map(s => `<span>${esc(s)}</span>`).join("");
                 $("result").innerHTML =
                     `<div class="answer"><div class="qlabel">${question}</div>${md(data.answer)}` +
                     (sources ? `<div class="sources"><strong>Sources :</strong><br>${sources}</div>` : "") +
@@ -633,7 +639,7 @@
 
         const renderCard = (card) => {
             $("study-area").innerHTML =
-                `<div class="answer">${sourceChip(card.document)}<div class="card-question">${card.question}</div>` +
+                `<div class="answer">${sourceChip(card.document)}<div class="card-question">${esc(card.question)}</div>` +
                 `<textarea id="user-answer" placeholder="Ta réponse de mémoire…" autofocus></textarea>` +
                 `<button id="submit-answer" data-id="${card.id}">Valider</button></div>`;
             $("submit-answer").addEventListener("click", submitAnswer);
@@ -673,8 +679,8 @@
             showProgress(data.progress);
             $("study-area").innerHTML =
                 `<div class="answer">` +
-                `<span class="badge ${badgeClass(data.score)}">${data.score}/5</span>${data.feedback}` +
-                `<div class="reference"><b>Réponse attendue :</b><br>${data.reference}</div>` +
+                `<span class="badge ${badgeClass(data.score)}">${data.score}/5</span>${esc(data.feedback)}` +
+                `<div class="reference"><b>Réponse attendue :</b><br>${esc(data.reference)}</div>` +
                 `<div class="hint">Prochaine révision dans ${data.next_due_in_days} jour(s).</div>` +
                 `<button id="next-card" style="margin-top:.8rem">Question suivante</button></div>`;
             $("next-card").addEventListener("click", loadNextCard);

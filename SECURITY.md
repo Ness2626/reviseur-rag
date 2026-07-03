@@ -48,7 +48,7 @@ dans un navigateur, et dépend d'une **chaîne d'approvisionnement** (PyPI, CDN,
 | Menace | Vecteur | Mitigation en place | Mitigation prévue |
 |---|---|---|---|
 | Exécution de code via le cache d'index | fichier de cache altéré | Format inerte (JSON + npz) signé HMAC-SHA256, rejet si signature invalide (V1) | — |
-| XSS via la réponse du LLM | PDF adversarial → injection de prompt → HTML dans la sortie | — | V2 : sanitisation DOMPurify |
+| XSS via la réponse du LLM | PDF adversarial → injection de prompt → HTML dans la sortie | Sanitisation DOMPurify (SRI) + échappement systématique (V2) | — |
 | Fuite de la clé d'API | commit accidentel, image Docker | `.env` exclu de git et de `.dockerignore` | — |
 | Upload abusif (DoS, écrasement) | endpoint `/api/upload` | `secure_filename`, extension `.pdf` vérifiée | V3 : taille max, magic bytes, non-écrasement |
 | Compromission d'une dépendance | PyPI, CDN | — | V4/V5 : versions épinglées, audit, SRI |
@@ -77,14 +77,19 @@ constant (`hmac.compare_digest`) **avant** tout parsing ; en cas d'écart le cac
 rejeté et reconstruit depuis les PDF sources. On protège ici l'**intégrité**, pas la
 confidentialité, le contenu n'étant pas secret.*
 
-**V2 — XSS via la sortie du LLM (injection de prompt indirecte)** · ⏳ · CWE-79, OWASP LLM01
-`templates/index.html:458` et suivantes — les réponses du LLM sont converties en HTML par
+**V2 — XSS via la sortie du LLM (injection de prompt indirecte)** · ✅ corrigé (juillet 2026) · CWE-79, OWASP LLM01
+`templates/index.html` — les réponses du LLM étaient converties en HTML par
 `marked.parse()` puis insérées via `innerHTML` sans sanitisation. Or le LLM reçoit en
-contexte le texte brut des PDF : un document piégé peut lui faire produire du HTML actif
+contexte le texte brut des PDF : un document piégé pouvait lui faire produire du HTML actif
 (`<img onerror=…>`), exécuté dans le navigateur de l'utilisateur. Chaîne complète :
 *PDF adversarial → injection de prompt indirecte → sortie HTML → XSS*.
-*Correction prévue : sanitiser la sortie de `marked.parse()` avec DOMPurify avant toute
-insertion dans le DOM. La sortie d'un LLM doit être traitée comme une entrée utilisateur.*
+*Correction : toute conversion Markdown passe par un helper `md()` qui sanitise la sortie
+de `marked.parse()` avec DOMPurify 3.4.11 (chargé via CDN avec version épinglée et
+attribut `integrity` SRI sha384 — le problème V5 ne s'applique donc pas à cette
+bibliothèque). Le helper est fail-closed : si DOMPurify n'est pas chargé, le texte est
+échappé au lieu d'être interprété. Les insertions de contenu LLM hors Markdown (question
+de carte, feedback et réponse de référence de la correction, libellés de sources) passent
+désormais toutes par `esc()`. La sortie d'un LLM est traitée comme une entrée utilisateur.*
 
 ### Priorité moyenne
 
