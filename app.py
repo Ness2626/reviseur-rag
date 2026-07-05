@@ -14,9 +14,26 @@ from rag_engine import RagEngine
 
 MAX_UPLOAD_MB = 50
 PDF_MAGIC = b"%PDF"
+CSP_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self'; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "frame-ancestors 'none'; "
+    "form-action 'self'"
+)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+
+
+@app.after_request
+def set_security_headers(response):
+    response.headers["Content-Security-Policy"] = CSP_POLICY
+    return response
 
 load_dotenv()
 _api_key = os.getenv("GROQ_API_KEY")
