@@ -46,9 +46,11 @@ bibliothèque qui lit les PDF, corrigée en changeant de version.
 **5 — Bibliothèques JS non vérifiées.** Mes libs (marked, Chart.js) arrivaient d'un CDN
 sans version fixe ni vérification : si le CDN ou le paquet était compromis, le code
 injecté s'exécutait chez moi — et pouvait même désactiver DOMPurify, donc annuler ma
-correction du point 2. Chaque lib est maintenant épinglée à une version exacte avec une
-empreinte SRI : le navigateur calcule le hash du fichier reçu et le refuse s'il ne
-correspond plus.
+correction du point 2. J'ai d'abord épinglé chaque lib à une version exacte avec une
+empreinte SRI (le navigateur refuse le fichier si son hash ne correspond plus), puis je
+suis allée au bout de la logique : les trois libs sont maintenant servies en copie
+locale (`static/vendor/`, fichiers vérifiés par leur empreinte avant d'être copiés).
+Plus aucun CDN dans la boucle, et l'appli fonctionne hors ligne.
 
 **6 — Serveur de dev en Docker.** Le conteneur lançait le serveur de développement de
 Flask, mono-thread et pas fait pour tourner en continu. Je l'ai remplacé par gunicorn,
@@ -66,7 +68,13 @@ le cache — pas exploitable : personne ne gagne rien à fabriquer une collision
 propre cache. Je l'ai quand même remplacé par SHA-256, par cohérence avec le reste du
 projet et pour éviter les fausses alertes des outils d'analyse automatique.
 
-## Ce que je ne protège pas (choix assumés)
+## Défense en profondeur, ajoutée après coup
+
+En plus des 8 corrections, j'ai ajouté une Content-Security-Policy : le navigateur
+n'exécute plus que les scripts servis par l'appli elle-même, rien en ligne, rien
+d'externe. Si jamais une XSS passait malgré DOMPurify et l'échappement, elle serait
+bloquée à cette dernière étape. Ça m'a demandé de sortir tout le JS de la page vers
+un fichier séparé. Testé au navigateur : un script injecté est bien refusé.
 
 - **Pas d'authentification** : l'appli n'écoute qu'en local. Si elle est lancée en
   Docker, ne pas exposer le port au-delà de la machine.
