@@ -41,7 +41,9 @@ au nom du document, un renommage silencieux aurait coupé la progression en deux
 chaque installation récupérait les dernières versions publiées, sans contrôle. J'ai
 tout épinglé à des versions précises et je passe `pip-audit` pour repérer les
 vulnérabilités connues — le premier audit a d'ailleurs trouvé une vraie faille dans la
-bibliothèque qui lit les PDF, corrigée en changeant de version.
+bibliothèque qui lit les PDF, corrigée en changeant de version. Une GitHub Action
+relance l'audit chaque lundi (et à chaque modification des dépendances) : le job échoue
+si une faille apparaît, ça me suffit comme alerte.
 
 **5 — Bibliothèques JS non vérifiées.** Mes libs (marked, Chart.js) arrivaient d'un CDN
 sans version fixe ni vérification : si le CDN ou le paquet était compromis, le code
