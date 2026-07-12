@@ -1,12 +1,8 @@
 # Améliorations — fiche de route
 
-Fiche de travail pour les prochaines sessions de code. Les décisions de conception
-sont déjà tranchées ici : implémenter tel quel, ne pas re-débattre. Pour lancer une
-session : « Implémente le point N de AMELIORATIONS.md, les décisions sont dedans,
-tests obligatoires, ne touche à rien d'autre. »
-
-Rappels d'environnement : venv hors repo (`/home/Ness26/venv-rag/bin/python -m pytest`),
-59 tests doivent rester verts, commits courts en une ligne, sans co-auteur.
+Les évolutions envisagées pour le Réviseur, avec les décisions de conception déjà
+tranchées pour chacune. Rien n'est urgent : l'ordre conseillé est en bas, et c'est
+l'usage réel qui départage.
 
 ---
 
