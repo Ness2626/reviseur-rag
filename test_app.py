@@ -4,6 +4,8 @@ import os
 import pytest
 from pypdf import PdfWriter
 
+import store
+
 
 def blank_pdf_bytes():
     buffer = io.BytesIO()
@@ -131,3 +133,29 @@ def test_quiz_answer_requires_selection(client):
 def test_exercise_grade_rejects_malformed_payload(client):
     response = client.post("/api/exercise/grade", json={"kind": None, "params": "pas un dict"})
     assert response.status_code == 400
+
+
+def test_export_csv_contains_bom_header_and_cards(client):
+    store.add_cards("export.pdf", [{"question": "Q1;test", "answer": "A1"}])
+    store.add_cards("export.pdf", [{"question": "Q2", "answer": "A2", "options": ["A2", "B", "C", "D"]}])
+
+    response = client.get("/api/export/csv")
+
+    assert response.status_code == 200
+    assert response.mimetype == "text/csv"
+    assert "attachment" in response.headers["Content-Disposition"]
+    body = response.get_data(as_text=True)
+    assert body.startswith(chr(0xFEFF) + "question;reponse;source")
+    assert '"Q1;test";A1;export.pdf' in body
+    assert "Q2;A2;export.pdf" in body
+
+
+def test_export_csv_filters_by_document(client):
+    store.add_cards("only_a.pdf", [{"question": "QA", "answer": "AA"}])
+    store.add_cards("only_b.pdf", [{"question": "QB", "answer": "AB"}])
+
+    response = client.get("/api/export/csv?document=only_a.pdf")
+
+    body = response.get_data(as_text=True)
+    assert "only_a.pdf" in body
+    assert "only_b.pdf" not in body

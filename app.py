@@ -1,8 +1,10 @@
+import csv
+import io
 import os
 import sys
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 from groq import Groq
 from sentence_transformers import SentenceTransformer
 from werkzeug.utils import secure_filename
@@ -14,6 +16,8 @@ from rag_engine import RagEngine
 
 MAX_UPLOAD_MB = 50
 PDF_MAGIC = b"%PDF"
+CSV_DELIMITER = ";"
+CSV_BOM = chr(0xFEFF)
 CSP_POLICY = (
     "default-src 'self'; "
     "script-src 'self'; "
@@ -78,6 +82,29 @@ def api_dashboard():
     data = request.get_json(silent=True) or {}
     document = data.get("document") or None
     return jsonify(_engine.dashboard(document))
+
+
+def _card_answer_for_export(card):
+    if card["options"]:
+        return " / ".join(RagEngine._decode_correct(card["answer"]))
+    return card["answer"]
+
+
+@app.route("/api/export/csv")
+def api_export_csv():
+    document = request.args.get("document") or None
+    cards = store.all_cards(document)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, delimiter=CSV_DELIMITER)
+    writer.writerow(["question", "reponse", "source"])
+    for card in cards:
+        writer.writerow([card["question"], _card_answer_for_export(card), card["document"]])
+    body = (CSV_BOM + buffer.getvalue()).encode("utf-8")
+    return Response(
+        body,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=cartes.csv"},
+    )
 
 
 @app.route("/api/exercise/new", methods=["POST"])

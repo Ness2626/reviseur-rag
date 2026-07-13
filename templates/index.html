@@ -265,6 +265,7 @@
         .insight button { flex: none; }
         @media (max-width: 600px) { .insight { flex-wrap: wrap; } .insight button { width: 100%; } }
 
+        .dash-toolbar { display: flex; justify-content: flex-end; margin-bottom: .8rem; }
         .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
         .dash-card { border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; background: var(--field); }
         .dash-card.dash-wide { grid-column: 1 / -1; }
@@ -421,6 +422,9 @@
         <div class="panel" id="panel-dashboard">
             <div id="dash-empty" class="empty" style="display:none"></div>
             <div id="dash-insight" class="insight" style="display:none"></div>
+            <div class="dash-toolbar" id="dash-toolbar" style="display:none">
+                <button class="ghost" id="export-csv-btn">Exporter en CSV</button>
+            </div>
             <div class="dash-grid" id="dash-grid">
                 <div class="dash-card">
                     <h3>Maturité des cartes</h3>

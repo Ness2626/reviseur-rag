@@ -133,6 +133,17 @@ def get_card(card_id, db_path=DB_PATH):
     return _row_to_card(row)
 
 
+def all_cards(document=None, db_path=DB_PATH):
+    clause = " WHERE document = ?" if document else ""
+    params = [document] if document else []
+    with _lock, _connect(db_path) as conn:
+        rows = conn.execute(
+            f"SELECT document, question, answer, options FROM cards{clause} ORDER BY document, id",
+            params,
+        ).fetchall()
+    return [_row_to_card(row) for row in rows]
+
+
 def record_review(card_id, quality, today=None, db_path=DB_PATH):
     review_day = today or date.today()
     with _lock, _connect(db_path) as conn:
