@@ -37,6 +37,11 @@
             if ($("panel-dashboard").classList.contains("active")) loadDashboard();
         });
 
+        $("export-csv-btn").addEventListener("click", () => {
+            const doc = $("document").value;
+            window.location.href = "/api/export/csv" + (doc ? `?document=${encodeURIComponent(doc)}` : "");
+        });
+
         const refreshDocuments = (documents) => {
             $("corpus").textContent = documents.length;
             const select = $("document");
@@ -500,6 +505,7 @@
             const m = data.maturity;
             const hasCards = (m.new + m.learning + m.young + m.mature) > 0;
             $("dash-grid").style.display = hasCards ? "" : "none";
+            $("dash-toolbar").style.display = hasCards ? "" : "none";
             $("dash-empty").style.display = hasCards ? "none" : "";
             if (!hasCards) {
                 $("dash-insight").style.display = "none";

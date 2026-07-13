@@ -94,6 +94,22 @@ def test_record_skill_review_reschedules(db):
     assert schedule["due_date"] == "2026-01-02"
 
 
+def test_all_cards_orders_by_document_then_id(db):
+    store.add_cards("b.pdf", [{"question": "Q1", "answer": "A1"}], db)
+    store.add_cards("a.pdf", [{"question": "Q2", "answer": "A2", "options": ["A2", "X"]}], db)
+    cards = store.all_cards(db_path=db)
+    assert [c["document"] for c in cards] == ["a.pdf", "b.pdf"]
+    assert cards[0]["options"] == ["A2", "X"]
+    assert cards[1]["options"] is None
+
+
+def test_all_cards_filters_by_document(db):
+    store.add_cards("a.pdf", [{"question": "Q1", "answer": "A1"}], db)
+    store.add_cards("b.pdf", [{"question": "Q2", "answer": "A2"}], db)
+    cards = store.all_cards("b.pdf", db_path=db)
+    assert [c["question"] for c in cards] == ["Q2"]
+
+
 def test_record_review_logs_history(db):
     store.add_cards("doc.pdf", [{"question": "Q", "answer": "A"}], db)
     card = store.next_due_card("doc.pdf", kind="open", db_path=db)
