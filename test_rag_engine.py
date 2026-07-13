@@ -176,6 +176,25 @@ def test_decode_correct_tolerates_plain_string():
     assert RagEngine._decode_correct("pas du json") == ["pas du json"]
 
 
+def test_retrieve_hybrid_surfaces_term_missed_by_vector_search(monkeypatch):
+    chunks = [
+        chatbot.Chunk("TCP garantit l'ordre des segments du reseau.", "reseaux.pdf", 1),
+        chatbot.Chunk("Le protocole HTTP transporte des pages au format texte brut.", "web.pdf", 1),
+        chatbot.Chunk("Le mode OAEP protege le padding contre les oracles de dechiffrement.", "crypto.pdf", 1),
+    ]
+    embeddings = FakeEmbedder().encode([c.text for c in chunks])
+    monkeypatch.setattr(chatbot, "discover_pdfs", lambda: ["reseaux.pdf", "web.pdf", "crypto.pdf"])
+    monkeypatch.setattr(chatbot, "build_index_cached", lambda paths, model: (chunks, embeddings))
+    engine = RagEngine(FakeGroqClient(), FakeEmbedder(), top_k=2)
+    engine.rebuild()
+
+    retrieved = engine._retrieve("tcp oaep padding oracles")
+    sources = {chunk.source for chunk in retrieved}
+
+    assert "crypto.pdf" in sources
+    assert "web.pdf" not in sources
+
+
 def test_within_budget_downsamples_but_keeps_at_least_one():
     chunks = [chatbot.Chunk("x" * 1000, "d.pdf", i) for i in range(20)]
     kept = _within_budget(chunks, budget=4000)

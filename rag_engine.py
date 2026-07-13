@@ -1,8 +1,10 @@
 import json
 import random
+import re
 import threading
 
 import numpy as np
+from rank_bm25 import BM25Okapi
 
 import chatbot
 import store
@@ -11,6 +13,20 @@ FICHE_BUDGET_CHARS = 16000
 MAX_CARDS = 15
 QUIZ_CORRECT_GRADE = 5
 QUIZ_WRONG_GRADE = 1
+RRF_K = 60
+TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+
+
+def _tokenize(text):
+    return TOKEN_PATTERN.findall(text.lower())
+
+
+def _reciprocal_rank_fusion(*rank_lists, k=RRF_K):
+    scores = {}
+    for ranks in rank_lists:
+        for position, local_index in enumerate(ranks):
+            scores[local_index] = scores.get(local_index, 0.0) + 1.0 / (k + position + 1)
+    return sorted(scores, key=scores.get, reverse=True)
 
 
 def _within_budget(chunks, budget=FICHE_BUDGET_CHARS):
@@ -37,12 +53,14 @@ class RagEngine:
         self._chunks = []
         self._embeddings = None
         self._documents = []
+        self._bm25 = None
 
     def rebuild(self):
         paths = chatbot.discover_pdfs()
         with self._lock:
             self._chunks, self._embeddings = chatbot.build_index_cached(paths, self._model)
             self._documents = sorted({chunk.source for chunk in self._chunks})
+            self._bm25 = BM25Okapi([_tokenize(c.text) for c in self._chunks]) if self._chunks else None
         return self._documents
 
     def documents(self):
@@ -58,10 +76,17 @@ class RagEngine:
             indices = list(range(len(self._chunks)))
         if not indices:
             return []
+
         subset = self._embeddings[indices]
         query_vec = self._model.encode([question], normalize_embeddings=True)[0]
-        scores = subset @ query_vec
-        best = np.argsort(scores)[::-1][:self._top_k]
+        vector_scores = subset @ query_vec
+        vector_ranks = np.argsort(vector_scores)[::-1]
+
+        bm25_scores = np.asarray(self._bm25.get_scores(_tokenize(question)))[indices]
+        bm25_ranks = np.argsort(bm25_scores)[::-1]
+
+        fused = _reciprocal_rank_fusion(vector_ranks, bm25_ranks)
+        best = fused[:self._top_k]
         return [self._chunks[indices[i]] for i in best]
 
     def ask(self, question, document=None):
