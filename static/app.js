@@ -37,26 +37,62 @@
             if ($("panel-dashboard").classList.contains("active")) loadDashboard();
         });
 
+        const escAttr = (s) => esc(s).replace(/"/g, "&quot;");
+        const scopeParams = () => {
+            const v = $("document").value;
+            if (v.startsWith("subject:")) return { subject: v.slice(8) };
+            if (v.startsWith("doc:")) return { document: v.slice(4) };
+            return {};
+        };
+        const scopeLabel = () => {
+            const opt = $("document").selectedOptions[0];
+            return opt && opt.value ? opt.textContent : "tout le corpus";
+        };
+        const scopeQuery = () => {
+            const p = scopeParams();
+            if (p.subject) return `?subject=${encodeURIComponent(p.subject)}`;
+            if (p.document) return `?document=${encodeURIComponent(p.document)}`;
+            return "";
+        };
+
         $("export-csv-btn").addEventListener("click", () => {
-            const doc = $("document").value;
-            window.location.href = "/api/export/csv" + (doc ? `?document=${encodeURIComponent(doc)}` : "");
+            window.location.href = "/api/export/csv" + scopeQuery();
         });
 
-        const refreshDocuments = (documents) => {
+        const buildScopeOptions = (documents, subjects) => {
+            let html = '<option value="">Tout le corpus</option>';
+            if (subjects.length) {
+                html += '<optgroup label="Matières">' +
+                    subjects.map(s => `<option value="subject:${escAttr(s)}">${esc(s)}</option>`).join("") +
+                    '</optgroup>';
+            }
+            html += '<optgroup label="Documents">' +
+                documents.map(d => `<option value="doc:${escAttr(d)}">${esc(d)}</option>`).join("") +
+                '</optgroup>';
+            return html;
+        };
+
+        const refreshDocuments = (documents, subjects, docSubjects) => {
+            subjects = subjects || [];
+            docSubjects = docSubjects || {};
             $("corpus").textContent = documents.length;
             const select = $("document");
             const current = select.value;
-            select.innerHTML = '<option value="">Tout le corpus</option>' +
-                documents.map(d => `<option value="${d}">${d}</option>`).join("");
+            select.innerHTML = buildScopeOptions(documents, subjects);
             select.value = current;
+            $("doc-links").innerHTML = documents.map(d => {
+                const tag = docSubjects[d] ? ` <span class="doc-subject">· ${esc(docSubjects[d])}</span>` : "";
+                return `<li><a href="/docs/${encodeURIComponent(d)}" target="_blank" rel="noopener">${esc(d)}${tag}</a>` +
+                    `<button class="doc-del" data-doc="${escAttr(d)}" title="Supprimer" aria-label="Supprimer">✕</button></li>`;
+            }).join("");
         };
 
         const refreshStats = async () => {
-            $("scope-label").textContent = $("document").value || "tout le corpus";
+            $("scope-label").textContent = scopeLabel();
             try {
                 const res = await fetch("/api/stats", {
                     method: "POST", headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({document: $("document").value})
+                    body: JSON.stringify({...scopeParams()})
                 });
                 const s = await res.json();
                 $("stat-due").textContent = s.due;
@@ -105,7 +141,7 @@
                 const res = await fetch("/api/ask", {
                     method: "POST",
                     headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({question, document: $("document").value})
+                    body: JSON.stringify({question, ...scopeParams()})
                 });
                 const data = await res.json();
                 if (!res.ok) { $("result").innerHTML = ""; flash(data.error, true); return; }
@@ -125,7 +161,7 @@
                 const res = await fetch("/api/fiche", {
                     method: "POST",
                     headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({document: $("document").value})
+                    body: JSON.stringify({...scopeParams()})
                 });
                 const data = await res.json();
                 if (!res.ok) { $("result").innerHTML = ""; flash(data.error, true); return; }
@@ -145,7 +181,7 @@
             try {
                 const res = await fetch("/api/feynman", {
                     method: "POST", headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({concept, explanation, document: $("document").value})
+                    body: JSON.stringify({concept, explanation, ...scopeParams()})
                 });
                 const data = await res.json();
                 if (!res.ok) { $("feynman-area").innerHTML = ""; flash(data.error, true); return; }
@@ -172,7 +208,7 @@
             try {
                 const res = await fetch("/api/cards/generate", {
                     method: "POST", headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({document: $("document").value, count: 8})
+                    body: JSON.stringify({...scopeParams(), count: 8})
                 });
                 const data = await res.json();
                 if (!res.ok) { flash(data.error, true); $("study-area").innerHTML = ""; return; }
@@ -197,7 +233,7 @@
             $("study-area").innerHTML = '<div class="spinner">Chargement…</div>';
             const res = await fetch("/api/study/next", {
                 method: "POST", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({document: $("document").value})
+                body: JSON.stringify({...scopeParams()})
             });
             const data = await res.json();
             showProgress(data.progress);
@@ -218,7 +254,7 @@
             $("study-area").insertAdjacentHTML("beforeend", '<div class="spinner">Correction…</div>');
             const res = await fetch("/api/study/answer", {
                 method: "POST", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({card_id: cardId, answer, document: $("document").value})
+                body: JSON.stringify({card_id: cardId, answer, ...scopeParams()})
             });
             const data = await res.json();
             if (!res.ok) { flash(data.error, true); return; }
@@ -245,7 +281,7 @@
             try {
                 const res = await fetch("/api/quiz/generate", {
                     method: "POST", headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({document: $("document").value, count: 8})
+                    body: JSON.stringify({...scopeParams(), count: 8})
                 });
                 const data = await res.json();
                 if (!res.ok) { flash(data.error, true); $("quiz-area").innerHTML = ""; return; }
@@ -279,7 +315,7 @@
             $("quiz-area").innerHTML = '<div class="spinner">Chargement…</div>';
             const res = await fetch("/api/quiz/next", {
                 method: "POST", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({document: $("document").value})
+                body: JSON.stringify({...scopeParams()})
             });
             const data = await res.json();
             showQuizProgress(data.progress);
@@ -303,7 +339,7 @@
             e.target.disabled = true;
             const res = await fetch("/api/quiz/answer", {
                 method: "POST", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({card_id: cardId, selected, document: $("document").value})
+                body: JSON.stringify({card_id: cardId, selected, ...scopeParams()})
             });
             const data = await res.json();
             if (!res.ok) { flash(data.error, true); return; }
@@ -366,7 +402,7 @@
         const rateFlash = async (quality) => {
             const res = await fetch("/api/flashcards/answer", {
                 method: "POST", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({card_id: flashCard.id, quality, document: $("document").value})
+                body: JSON.stringify({card_id: flashCard.id, quality, ...scopeParams()})
             });
             const data = await res.json();
             if (!res.ok) { flash(data.error, true); return; }
@@ -378,7 +414,7 @@
             $("flash-area").innerHTML = '<div class="spinner">Chargement…</div>';
             const res = await fetch("/api/flashcards/next", {
                 method: "POST", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({document: $("document").value})
+                body: JSON.stringify({...scopeParams()})
             });
             const data = await res.json();
             showFlashProgress(data.progress);
@@ -407,7 +443,7 @@
         const DONE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
 
         const goReview = (doc, mode) => {
-            $("document").value = (doc === "corpus" || !doc) ? "" : doc;
+            $("document").value = (doc === "corpus" || !doc) ? "" : "doc:" + doc;
             document.querySelector(`.tab[data-mode="${mode}"]`).click();
         };
 
@@ -498,7 +534,7 @@
             try {
                 const res = await fetch("/api/dashboard", {
                     method: "POST", headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({document: $("document").value})
+                    body: JSON.stringify({...scopeParams()})
                 });
                 data = await res.json();
             } catch (err) { flash("Erreur de chargement du tableau de bord.", true); return; }
@@ -624,9 +660,27 @@
                 const res = await fetch("/api/upload", {method: "POST", body});
                 const data = await res.json();
                 if (!res.ok) { flash(data.error, true); return; }
-                refreshDocuments(data.documents);
+                refreshDocuments(data.documents, data.subjects, data.document_subjects);
                 fileInput.value = "";
+                $("subject").value = "";
                 refreshStats();
+                flash(data.message, false);
+            } catch (err) { flash("Erreur réseau.", true); }
+        });
+
+        $("doc-links").addEventListener("click", async (e) => {
+            const btn = e.target.closest(".doc-del");
+            if (!btn) return;
+            const doc = btn.dataset.doc;
+            if (!confirm(`Supprimer « ${doc} » et ses cartes de révision ? Action irréversible.`)) return;
+            try {
+                const res = await fetch(`/api/documents/${encodeURIComponent(doc)}`, { method: "DELETE" });
+                const data = await res.json();
+                if (!res.ok) { flash(data.error, true); return; }
+                if ($("document").value === "doc:" + doc) $("document").value = "";
+                refreshDocuments(data.documents, data.subjects, data.document_subjects);
+                refreshStats();
+                if ($("panel-dashboard").classList.contains("active")) loadDashboard();
                 flash(data.message, false);
             } catch (err) { flash("Erreur réseau.", true); }
         });

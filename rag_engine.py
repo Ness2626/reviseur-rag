@@ -69,11 +69,25 @@ class RagEngine:
     def has_index(self):
         return bool(self._chunks)
 
-    def _retrieve(self, question, document=None):
+    def _scoped_sources(self, document, subject):
+        if subject:
+            return set(store.documents_in_subject(subject))
         if document:
-            indices = [i for i, c in enumerate(self._chunks) if c.source == document]
-        else:
+            return {document}
+        return None
+
+    def _scope_chunks(self, document, subject):
+        allowed = self._scoped_sources(document, subject)
+        if allowed is None:
+            return list(self._chunks)
+        return [chunk for chunk in self._chunks if chunk.source in allowed]
+
+    def _retrieve(self, question, document=None, subject=None):
+        allowed = self._scoped_sources(document, subject)
+        if allowed is None:
             indices = list(range(len(self._chunks)))
+        else:
+            indices = [i for i, c in enumerate(self._chunks) if c.source in allowed]
         if not indices:
             return []
 
@@ -89,64 +103,59 @@ class RagEngine:
         best = fused[:self._top_k]
         return [self._chunks[indices[i]] for i in best]
 
-    def ask(self, question, document=None):
+    def ask(self, question, document=None, subject=None):
         with self._lock:
-            retrieved = self._retrieve(question, document)
+            retrieved = self._retrieve(question, document, subject)
         if not retrieved:
             return {"answer": "Aucun passage pertinent trouvé.", "sources": []}
         answer = chatbot.answer(self._client, question, retrieved)
         sources = sorted({chunk.label() for chunk in retrieved})
         return {"answer": answer, "sources": sources}
 
-    def feynman(self, concept, explanation, document=None):
+    def feynman(self, concept, explanation, document=None, subject=None):
         with self._lock:
-            retrieved = self._retrieve(concept, document)
+            retrieved = self._retrieve(concept, document, subject)
         if not retrieved:
             return {"error": "Aucun passage pertinent trouvé pour ce concept."}
         feedback = chatbot.feynman_feedback(self._client, concept, explanation, retrieved)
         sources = sorted({chunk.label() for chunk in retrieved})
         return {"feedback": feedback, "sources": sources}
 
-    def generate_fiche(self, document=None):
+    def generate_fiche(self, document=None, subject=None):
         with self._lock:
-            if document:
-                chunks = [chunk for chunk in self._chunks if chunk.source == document]
-            else:
-                chunks = list(self._chunks)
+            chunks = self._scope_chunks(document, subject)
         if not chunks:
             return {"error": "Aucun contenu pour ce document."}
-        scope_label = document or "l'ensemble du corpus"
+        scope_label = subject or document or "l'ensemble du corpus"
         selected = _within_budget(chunks)
         fiche = chatbot.summarize_fiche(self._client, selected, scope_label)
         return {"fiche": fiche, "scope": scope_label}
 
-    def generate_cards(self, document=None, count=8):
+    def generate_cards(self, document=None, count=8, subject=None):
         with self._lock:
-            if document:
-                chunks = [chunk for chunk in self._chunks if chunk.source == document]
-            else:
-                chunks = list(self._chunks)
+            chunks = self._scope_chunks(document, subject)
         if not chunks:
             return {"error": "Aucun contenu pour ce document."}
         count = max(1, min(MAX_CARDS, count))
-        scope_label = document or "l'ensemble du corpus"
+        scope_label = subject or document or "l'ensemble du corpus"
         selected = _within_budget(chunks)
         cards = chatbot.generate_cards(self._client, selected, count, scope_label)
         if not cards:
             return {"error": "La génération n'a produit aucune carte."}
-        added = store.add_cards(document or "corpus", cards)
-        return {"added": added, "scope": scope_label, "progress": store.progress(document, kind="open")}
+        added = store.add_cards(document or subject or "corpus", cards)
+        return {"added": added, "scope": scope_label,
+                "progress": store.progress(document, kind="open", subject=subject)}
 
-    def next_card(self, document=None):
-        card = store.next_due_card(document, kind="open")
+    def next_card(self, document=None, subject=None):
+        card = store.next_due_card(document, kind="open", subject=subject)
         if not card:
-            return {"card": None, "progress": store.progress(document, kind="open")}
+            return {"card": None, "progress": store.progress(document, kind="open", subject=subject)}
         return {
             "card": {"id": card["id"], "question": card["question"], "document": card["document"]},
-            "progress": store.progress(document, kind="open"),
+            "progress": store.progress(document, kind="open", subject=subject),
         }
 
-    def submit_answer(self, card_id, user_answer, document=None):
+    def submit_answer(self, card_id, user_answer, document=None, subject=None):
         card = store.get_card(card_id)
         if not card:
             return {"error": "Carte introuvable."}
@@ -157,13 +166,13 @@ class RagEngine:
             "feedback": grade["feedback"],
             "reference": card["answer"],
             "next_due_in_days": schedule["interval"] if schedule else None,
-            "progress": store.progress(document, kind="open"),
+            "progress": store.progress(document, kind="open", subject=subject),
         }
 
-    def next_flashcard(self, document=None):
-        card = store.next_due_card(document, kind="open")
+    def next_flashcard(self, document=None, subject=None):
+        card = store.next_due_card(document, kind="open", subject=subject)
         if not card:
-            return {"card": None, "progress": store.progress(document, kind="open")}
+            return {"card": None, "progress": store.progress(document, kind="open", subject=subject)}
         return {
             "card": {
                 "id": card["id"],
@@ -171,39 +180,37 @@ class RagEngine:
                 "answer": card["answer"],
                 "document": card["document"],
             },
-            "progress": store.progress(document, kind="open"),
+            "progress": store.progress(document, kind="open", subject=subject),
         }
 
-    def submit_flashcard(self, card_id, quality, document=None):
+    def submit_flashcard(self, card_id, quality, document=None, subject=None):
         if not store.get_card(card_id):
             return {"error": "Carte introuvable."}
         schedule = store.record_review(card_id, quality)
         return {
             "next_due_in_days": schedule["interval"] if schedule else None,
-            "progress": store.progress(document, kind="open"),
+            "progress": store.progress(document, kind="open", subject=subject),
         }
 
-    def generate_quiz(self, document=None, count=8):
+    def generate_quiz(self, document=None, count=8, subject=None):
         with self._lock:
-            if document:
-                chunks = [chunk for chunk in self._chunks if chunk.source == document]
-            else:
-                chunks = list(self._chunks)
+            chunks = self._scope_chunks(document, subject)
         if not chunks:
             return {"error": "Aucun contenu pour ce document."}
         count = max(1, min(MAX_CARDS, count))
-        scope_label = document or "l'ensemble du corpus"
+        scope_label = subject or document or "l'ensemble du corpus"
         selected = _within_budget(chunks)
         cards = chatbot.generate_quiz(self._client, selected, count, scope_label)
         if not cards:
             return {"error": "La génération n'a produit aucune question."}
-        added = store.add_cards(document or "corpus", cards)
-        return {"added": added, "scope": scope_label, "progress": store.progress(document, kind="quiz")}
+        added = store.add_cards(document or subject or "corpus", cards)
+        return {"added": added, "scope": scope_label,
+                "progress": store.progress(document, kind="quiz", subject=subject)}
 
-    def next_quiz(self, document=None):
-        card = store.next_due_card(document, kind="quiz")
+    def next_quiz(self, document=None, subject=None):
+        card = store.next_due_card(document, kind="quiz", subject=subject)
         if not card:
-            return {"card": None, "progress": store.progress(document, kind="quiz")}
+            return {"card": None, "progress": store.progress(document, kind="quiz", subject=subject)}
         options = list(card["options"])
         random.shuffle(options)
         return {
@@ -213,10 +220,10 @@ class RagEngine:
                 "options": options,
                 "document": card["document"],
             },
-            "progress": store.progress(document, kind="quiz"),
+            "progress": store.progress(document, kind="quiz", subject=subject),
         }
 
-    def submit_quiz(self, card_id, selected, document=None):
+    def submit_quiz(self, card_id, selected, document=None, subject=None):
         card = store.get_card(card_id)
         if not card or not card.get("options"):
             return {"error": "Carte introuvable."}
@@ -229,7 +236,7 @@ class RagEngine:
             "answers": correct_answers,
             "explanation": card.get("explanation"),
             "next_due_in_days": schedule["interval"] if schedule else None,
-            "progress": store.progress(document, kind="quiz"),
+            "progress": store.progress(document, kind="quiz", subject=subject),
         }
 
     @staticmethod
@@ -240,8 +247,14 @@ class RagEngine:
             return [answer]
         return decoded if isinstance(decoded, list) else [answer]
 
-    def progress(self, document=None, kind=None):
-        return store.progress(document, kind=kind)
+    def progress(self, document=None, kind=None, subject=None):
+        return store.progress(document, kind=kind, subject=subject)
 
-    def dashboard(self, document=None):
-        return store.dashboard(document)
+    def dashboard(self, document=None, subject=None):
+        return store.dashboard(document, subject=subject)
+
+    def subjects(self):
+        return store.subjects()
+
+    def document_subjects(self):
+        return store.document_subjects()

@@ -110,6 +110,70 @@ def test_all_cards_filters_by_document(db):
     assert [c["question"] for c in cards] == ["Q2"]
 
 
+def test_set_document_subject_upserts(db):
+    store.set_document_subject("a.pdf", "crypto", db)
+    store.set_document_subject("a.pdf", "maths", db)
+    assert store.document_subjects(db_path=db) == {"a.pdf": "maths"}
+
+
+def test_set_document_subject_blank_stores_null(db):
+    store.set_document_subject("a.pdf", "  ", db)
+    assert store.document_subjects(db_path=db) == {"a.pdf": None}
+    assert store.subjects(db_path=db) == []
+
+
+def test_subjects_lists_distinct_sorted(db):
+    store.set_document_subject("a.pdf", "reseaux", db)
+    store.set_document_subject("b.pdf", "crypto", db)
+    store.set_document_subject("c.pdf", "crypto", db)
+    assert store.subjects(db_path=db) == ["crypto", "reseaux"]
+
+
+def test_documents_in_subject_returns_names(db):
+    store.set_document_subject("b.pdf", "crypto", db)
+    store.set_document_subject("a.pdf", "crypto", db)
+    assert store.documents_in_subject("crypto", db_path=db) == ["a.pdf", "b.pdf"]
+
+
+def test_all_cards_filters_by_subject(db):
+    store.set_document_subject("rsa.pdf", "crypto", db)
+    store.set_document_subject("tcp.pdf", "reseaux", db)
+    store.add_cards("rsa.pdf", [{"question": "Q1", "answer": "A1"}], db)
+    store.add_cards("tcp.pdf", [{"question": "Q2", "answer": "A2"}], db)
+    cards = store.all_cards(subject="crypto", db_path=db)
+    assert [c["question"] for c in cards] == ["Q1"]
+
+
+def test_progress_filters_by_subject(db):
+    store.set_document_subject("rsa.pdf", "crypto", db)
+    store.add_cards("rsa.pdf", [{"question": "Q", "answer": "A"}], db)
+    store.add_cards("tcp.pdf", [{"question": "Q2", "answer": "A2"}], db)
+    assert store.progress(subject="crypto", db_path=db)["total"] == 1
+
+
+def test_subject_scope_includes_cards_tagged_with_subject_name(db):
+    store.add_cards("crypto", [{"question": "Qsub", "answer": "A"}], db)
+    assert [c["question"] for c in store.all_cards(subject="crypto", db_path=db)] == ["Qsub"]
+
+
+def test_delete_document_removes_cards_and_subject(db):
+    store.set_document_subject("gone.pdf", "crypto", db)
+    store.add_cards("gone.pdf", [{"question": "Q", "answer": "A"}], db)
+    store.add_cards("keep.pdf", [{"question": "Q2", "answer": "A2"}], db)
+    store.delete_document("gone.pdf", db)
+    assert [c["question"] for c in store.all_cards(db_path=db)] == ["Q2"]
+    assert store.document_subjects(db_path=db) == {}
+
+
+def test_delete_document_removes_review_history(db):
+    store.add_cards("gone.pdf", [{"question": "Q", "answer": "A"}], db)
+    card = store.next_due_card("gone.pdf", kind="open", db_path=db)
+    store.record_review(card["id"], 4, today=date(2026, 1, 1), db_path=db)
+    store.delete_document("gone.pdf", db)
+    history = store.dashboard(today=date(2026, 1, 1), db_path=db)["reviews_history"][-1]
+    assert history["count"] == 0
+
+
 def test_record_review_logs_history(db):
     store.add_cards("doc.pdf", [{"question": "Q", "answer": "A"}], db)
     card = store.next_due_card("doc.pdf", kind="open", db_path=db)

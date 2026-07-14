@@ -124,6 +124,82 @@ se présente vraiment dans les cours.
   `try/except ImportError` avec message clair « installez l'extra OCR ».
 - `CHUNKER_VERSION` (point 2) sert aussi ici pour invalider le cache.
 
+## 11. Rouvrir un PDF indexé — ½ heure
+
+**Pourquoi.** Une fois un document ajouté, on ne peut plus le consulter. Manque
+visible dès qu'on teste l'appli, et utile pour vérifier une source citée par le RAG.
+
+**Décisions prises.**
+- Route `GET /docs/<nom>` servant le fichier depuis `chatbot.DOCS_DIR` via
+  `flask.send_from_directory` — jamais de concaténation de chemin à la main
+  (`send_from_directory` bloque déjà le path traversal, cohérent avec l'upload).
+- Valider que le nom se termine par `.pdf` avant de servir ; 404 sinon.
+- Côté UI : le nom de chaque document dans la liste devient un lien
+  `target="_blank"` vers `/docs/<nom>`. Le PDF s'ouvre dans le viewer natif du
+  navigateur, aucun code de rendu à écrire.
+- CSP : `object-src 'none'` reste ; on ouvre dans un onglet, on n'embarque pas.
+
+**Fichiers.** `app.py` (nouvelle route), `templates/index.html` + `static/app.js`
+(le lien), `test_app.py`.
+**Test clé.** `GET /docs/cours.pdf` après upload → 200 + `Content-Type` PDF ;
+`GET /docs/../app.py` → 404 (le path traversal reste neutralisé).
+
+## 12. Séparer par matière — 1 journée
+
+**Pourquoi.** Aujourd'hui tout est indexé par nom de fichier ; rien ne regroupe
+« crypto » et « réseaux ». Pour réviser une matière sans mélanger les cartes des
+autres, il faut une notion au-dessus du document.
+
+**Décisions prises.**
+- Une matière = un simple tag texte porté par le **document**, pas par la carte
+  (une carte hérite de la matière de son PDF). Table `documents(name TEXT PRIMARY
+  KEY, subject TEXT)`, `subject` NULL toléré (« non classé »).
+- Assignée à l'upload : un champ texte libre à côté du bouton d'ajout (défaut
+  vide). Pas de liste fermée de matières (YAGNI) — l'autocomplétion sur les
+  matières déjà utilisées suffira plus tard si besoin.
+- Le filtre existant (par document) gagne un cran au-dessus : filtrer par matière
+  = filtrer sur tous les documents de cette matière. Réutiliser le paramètre
+  `document` partout où c'est possible en résolvant matière → liste de documents
+  côté `store`, pour ne pas propager un deuxième paramètre dans toutes les routes.
+- Recoupe le point 7 (stats par notion) : `topic` = grain fin *dans* un PDF,
+  `subject` = grain gros *au-dessus*. Les deux coexistent, ne pas les confondre.
+
+**Piège.** Le filtre `document` traverse déjà `rag_engine`, `store` et l'UI —
+lister tous ses points de passage **avant** de coder, sinon le filtre matière ne
+s'appliquera qu'à moitié.
+**Fichiers.** `store.py`, `rag_engine.py`, `app.py`, `templates/index.html`,
+`static/app.js`, `test_store.py`, `test_app.py`.
+
+## 13. Supprimer un document indexé — ½ journée
+
+**Pourquoi.** Aucun moyen de retirer un cours depuis l'UI ; il fallait effacer le
+fichier à la main dans `docs/` puis relancer.
+
+**Décisions prises.**
+- `DELETE /api/documents/<name>` : `secure_filename` sur le nom (le converter
+  `<name>` rejette déjà les slashes), 404 si le fichier n'est pas dans `docs/`.
+- Supprimer **le fichier + les cartes du document + son historique de reviews +
+  son tag matière**, puis réindexer. Garder des cartes orphelines fausserait les
+  stats. `store.delete_document` fait le ménage en une transaction.
+- Confirmation navigateur avant suppression (irréversible).
+- Bouton ✕ par document dans la liste latérale ; handler délégué sur `#doc-links`.
+
+**Fichiers.** `store.py`, `app.py`, `templates/index.html`, `static/app.js`,
+`test_store.py`, `test_app.py`.
+
+## 14. Refus des doublons par contenu — 2-3 h
+
+**Pourquoi.** Le refus de doublon ne portait que sur le **nom** de fichier : un
+même PDF sous deux noms différents était indexé deux fois.
+
+**Décisions prises.**
+- SHA-256 du contenu uploadé, comparé aux `file_signature` des PDF déjà présents
+  (réutilise le hash que le cache calcule déjà — pas de nouvelle logique de hash).
+- 409 avec le nom du document identique déjà indexé.
+- Le refus par nom (409 « existe déjà ») est conservé et testé en premier.
+
+**Fichiers.** `app.py`, `test_app.py`.
+
 ## 10. LLM local Ollama — 1-2 journées (gros morceau, en dernier)
 
 **Décisions prises.**
@@ -144,9 +220,16 @@ se présente vraiment dans les cours.
 
 ## Ordre conseillé
 
+Déjà faits : **point 1** (recherche hybride BM25), **point 6** (export CSV),
+**point 11** (rouvrir un PDF), **point 12** (séparer par matière),
+**point 13** (supprimer un document), **point 14** (refus des doublons par contenu).
+
 1. **Utiliser l'outil pour réviser** (0 min de dev) — c'est l'usage réel qui départage
    la suite : retrieval qui rate des sigles → point 1 ; chunks incohérents → point 2 ;
    attente pénible → point 3 ; PDF scannés → point 9.
-2. Démo déployée pour le CV → point 4 obligatoire d'abord.
-3. Confort, dans l'ordre du meilleur ratio valeur/effort : 6, 8, 7, 5.
-4. Point 10 en dernier, quand tout le reste est stable.
+2. Manques visibles au premier test, rapides : **point 11** (rouvrir un PDF, ½ h)
+   puis **point 12** (séparer par matière) — le point 12 est aussi le plus utile pour
+   réviser une matière à la fois.
+3. Démo déployée pour le CV → point 4 obligatoire d'abord.
+4. Confort, dans l'ordre du meilleur ratio valeur/effort : 8, 7, 5.
+5. Point 10 en dernier, quand tout le reste est stable.

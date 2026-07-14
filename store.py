@@ -30,6 +30,15 @@ def _kind_clause(kind):
     return None
 
 
+def _scope_filter(document, subject, column="document"):
+    if subject:
+        clause = f"({column} IN (SELECT name FROM documents WHERE subject = ?) OR {column} = ?)"
+        return clause, [subject, subject]
+    if document:
+        return f"{column} = ?", [document]
+    return "", []
+
+
 def _row_to_card(row):
     if row is None:
         return None
@@ -83,6 +92,14 @@ def init_db(db_path=DB_PATH):
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS documents (
+                name TEXT PRIMARY KEY,
+                subject TEXT
+            )
+            """
+        )
 
 
 def add_cards(document, cards, db_path=DB_PATH):
@@ -108,13 +125,57 @@ def add_cards(document, cards, db_path=DB_PATH):
     return len(rows)
 
 
-def next_due_card(document=None, kind=None, today=None, db_path=DB_PATH):
+def set_document_subject(name, subject, db_path=DB_PATH):
+    subject = (subject or "").strip() or None
+    with _lock, _connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO documents (name, subject) VALUES (?, ?) "
+            "ON CONFLICT(name) DO UPDATE SET subject = excluded.subject",
+            (name, subject),
+        )
+
+
+def document_subjects(db_path=DB_PATH):
+    with _lock, _connect(db_path) as conn:
+        rows = conn.execute("SELECT name, subject FROM documents").fetchall()
+    return {row["name"]: row["subject"] for row in rows}
+
+
+def subjects(db_path=DB_PATH):
+    with _lock, _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT subject FROM documents WHERE subject IS NOT NULL AND subject <> '' "
+            "ORDER BY subject"
+        ).fetchall()
+    return [row["subject"] for row in rows]
+
+
+def documents_in_subject(subject, db_path=DB_PATH):
+    with _lock, _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT name FROM documents WHERE subject = ? ORDER BY name", (subject,)
+        ).fetchall()
+    return [row["name"] for row in rows]
+
+
+def delete_document(name, db_path=DB_PATH):
+    with _lock, _connect(db_path) as conn:
+        conn.execute(
+            "DELETE FROM reviews WHERE card_id IN (SELECT id FROM cards WHERE document = ?)",
+            (name,),
+        )
+        conn.execute("DELETE FROM cards WHERE document = ?", (name,))
+        conn.execute("DELETE FROM documents WHERE name = ?", (name,))
+
+
+def next_due_card(document=None, kind=None, today=None, db_path=DB_PATH, subject=None):
     today = today or date.today().isoformat()
     clauses = ["due_date <= ?"]
     params = [today]
-    if document:
-        clauses.append("document = ?")
-        params.append(document)
+    scope, scope_params = _scope_filter(document, subject)
+    if scope:
+        clauses.append(scope)
+        params += scope_params
     kind_clause = _kind_clause(kind)
     if kind_clause:
         clauses.append(kind_clause)
@@ -133,9 +194,9 @@ def get_card(card_id, db_path=DB_PATH):
     return _row_to_card(row)
 
 
-def all_cards(document=None, db_path=DB_PATH):
-    clause = " WHERE document = ?" if document else ""
-    params = [document] if document else []
+def all_cards(document=None, db_path=DB_PATH, subject=None):
+    scope, params = _scope_filter(document, subject)
+    clause = (" WHERE " + scope) if scope else ""
     with _lock, _connect(db_path) as conn:
         rows = conn.execute(
             f"SELECT document, question, answer, options FROM cards{clause} ORDER BY document, id",
@@ -164,13 +225,14 @@ def record_review(card_id, quality, today=None, db_path=DB_PATH):
     return {"interval": updated.interval, "due_date": due.isoformat()}
 
 
-def progress(document=None, kind=None, today=None, db_path=DB_PATH):
+def progress(document=None, kind=None, today=None, db_path=DB_PATH, subject=None):
     today = today or date.today().isoformat()
     base = []
     params = []
-    if document:
-        base.append("document = ?")
-        params.append(document)
+    scope, scope_params = _scope_filter(document, subject)
+    if scope:
+        base.append(scope)
+        params += scope_params
     kind_clause = _kind_clause(kind)
     if kind_clause:
         base.append(kind_clause)
@@ -252,14 +314,16 @@ def _maturity_bucket(repetitions, interval):
     return "mature"
 
 
-def dashboard(document=None, today=None, db_path=DB_PATH):
+def dashboard(document=None, today=None, db_path=DB_PATH, subject=None):
     today = today or date.today()
     today_iso = today.isoformat()
-    card_filter = " WHERE document = ?" if document else ""
-    card_params = [document] if document else []
+    scope, scope_params = _scope_filter(document, subject)
+    card_filter = (" WHERE " + scope) if scope else ""
+    card_params = list(scope_params)
 
-    review_join = " WHERE c.document = ?" if document else ""
-    review_params = [document] if document else []
+    review_scope, review_scope_params = _scope_filter(document, subject, column="c.document")
+    review_join = (" WHERE " + review_scope) if review_scope else ""
+    review_params = list(review_scope_params)
 
     with _lock, _connect(db_path) as conn:
         maturity = {"new": 0, "learning": 0, "young": 0, "mature": 0}

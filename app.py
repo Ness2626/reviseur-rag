@@ -1,10 +1,12 @@
 import csv
+import hashlib
 import io
 import os
 import sys
+from glob import glob
 
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, abort, jsonify, render_template, request, send_from_directory
 from groq import Groq
 from sentence_transformers import SentenceTransformer
 from werkzeug.utils import secure_filename
@@ -58,21 +60,55 @@ _engine.rebuild()
 print(f"Index prêt : {len(_engine.documents())} document(s).")
 
 
+def _scope(data):
+    return data.get("document") or None, data.get("subject") or None
+
+
+def _documents_payload(message=None):
+    payload = {
+        "documents": _engine.documents(),
+        "subjects": _engine.subjects(),
+        "document_subjects": _engine.document_subjects(),
+    }
+    if message:
+        payload["message"] = message
+    return payload
+
+
+def _find_duplicate_document(digest):
+    for path in glob(os.path.join(chatbot.DOCS_DIR, "*.pdf")):
+        if chatbot.file_signature(path) == digest:
+            return os.path.basename(path)
+    return None
+
+
 @app.route("/")
 def index():
-    return render_template("index.html", documents=_engine.documents())
+    return render_template(
+        "index.html",
+        documents=_engine.documents(),
+        subjects=_engine.subjects(),
+        document_subjects=_engine.document_subjects(),
+    )
 
 
 @app.route("/api/documents")
 def api_documents():
-    return jsonify({"documents": _engine.documents()})
+    return jsonify(_documents_payload())
+
+
+@app.route("/docs/<name>")
+def serve_document(name):
+    if not name.lower().endswith(".pdf"):
+        abort(404)
+    return send_from_directory(os.path.abspath(chatbot.DOCS_DIR), name)
 
 
 @app.route("/api/stats", methods=["POST"])
 def api_stats():
     data = request.get_json(silent=True) or {}
-    document = data.get("document") or None
-    stats = _engine.progress(document)
+    document, subject = _scope(data)
+    stats = _engine.progress(document, subject=subject)
     stats["documents"] = len(_engine.documents())
     return jsonify(stats)
 
@@ -80,8 +116,8 @@ def api_stats():
 @app.route("/api/dashboard", methods=["POST"])
 def api_dashboard():
     data = request.get_json(silent=True) or {}
-    document = data.get("document") or None
-    return jsonify(_engine.dashboard(document))
+    document, subject = _scope(data)
+    return jsonify(_engine.dashboard(document, subject=subject))
 
 
 def _card_answer_for_export(card):
@@ -93,7 +129,8 @@ def _card_answer_for_export(card):
 @app.route("/api/export/csv")
 def api_export_csv():
     document = request.args.get("document") or None
-    cards = store.all_cards(document)
+    subject = request.args.get("subject") or None
+    cards = store.all_cards(document, subject=subject)
     buffer = io.StringIO()
     writer = csv.writer(buffer, delimiter=CSV_DELIMITER)
     writer.writerow(["question", "reponse", "source"])
@@ -142,12 +179,12 @@ def api_exercise_grade():
 def api_ask():
     data = request.get_json(silent=True) or {}
     question = (data.get("question") or "").strip()
-    document = data.get("document") or None
+    document, subject = _scope(data)
     if not question:
         return jsonify({"error": "Question vide."}), 400
     if not _engine.has_index():
         return jsonify({"error": "Aucun document indexé. Ajoutez d'abord un PDF."}), 400
-    return jsonify(_engine.ask(question, document))
+    return jsonify(_engine.ask(question, document, subject))
 
 
 @app.route("/api/feynman", methods=["POST"])
@@ -155,22 +192,22 @@ def api_feynman():
     data = request.get_json(silent=True) or {}
     concept = (data.get("concept") or "").strip()
     explanation = (data.get("explanation") or "").strip()
-    document = data.get("document") or None
+    document, subject = _scope(data)
     if not concept or not explanation:
         return jsonify({"error": "Indique un concept et ton explication."}), 400
     if not _engine.has_index():
         return jsonify({"error": "Aucun document indexé. Ajoutez d'abord un PDF."}), 400
-    result = _engine.feynman(concept, explanation, document)
+    result = _engine.feynman(concept, explanation, document, subject)
     return jsonify(result), (400 if "error" in result else 200)
 
 
 @app.route("/api/fiche", methods=["POST"])
 def api_fiche():
     data = request.get_json(silent=True) or {}
-    document = data.get("document") or None
+    document, subject = _scope(data)
     if not _engine.has_index():
         return jsonify({"error": "Aucun document indexé. Ajoutez d'abord un PDF."}), 400
-    result = _engine.generate_fiche(document)
+    result = _engine.generate_fiche(document, subject=subject)
     status = 400 if "error" in result else 200
     return jsonify(result), status
 
@@ -178,40 +215,44 @@ def api_fiche():
 @app.route("/api/cards/generate", methods=["POST"])
 def api_cards_generate():
     data = request.get_json(silent=True) or {}
-    document = data.get("document") or None
+    document, subject = _scope(data)
     count = data.get("count", 8)
     if not _engine.has_index():
         return jsonify({"error": "Aucun document indexé. Ajoutez d'abord un PDF."}), 400
-    result = _engine.generate_cards(document, count)
+    result = _engine.generate_cards(document, count, subject=subject)
     return jsonify(result), (400 if "error" in result else 200)
 
 
 @app.route("/api/study/next", methods=["POST"])
 def api_study_next():
     data = request.get_json(silent=True) or {}
-    return jsonify(_engine.next_card(data.get("document") or None))
+    document, subject = _scope(data)
+    return jsonify(_engine.next_card(document, subject=subject))
 
 
 @app.route("/api/study/answer", methods=["POST"])
 def api_study_answer():
     data = request.get_json(silent=True) or {}
+    document, subject = _scope(data)
     card_id = data.get("card_id")
     answer = (data.get("answer") or "").strip()
     if card_id is None or not answer:
         return jsonify({"error": "Réponse vide."}), 400
-    result = _engine.submit_answer(card_id, answer, data.get("document") or None)
+    result = _engine.submit_answer(card_id, answer, document, subject)
     return jsonify(result), (400 if "error" in result else 200)
 
 
 @app.route("/api/flashcards/next", methods=["POST"])
 def api_flashcards_next():
     data = request.get_json(silent=True) or {}
-    return jsonify(_engine.next_flashcard(data.get("document") or None))
+    document, subject = _scope(data)
+    return jsonify(_engine.next_flashcard(document, subject=subject))
 
 
 @app.route("/api/flashcards/answer", methods=["POST"])
 def api_flashcards_answer():
     data = request.get_json(silent=True) or {}
+    document, subject = _scope(data)
     card_id = data.get("card_id")
     quality = data.get("quality")
     if card_id is None or quality is None:
@@ -222,35 +263,37 @@ def api_flashcards_answer():
         return jsonify({"error": "Note invalide."}), 400
     if not 0 <= quality <= 5:
         return jsonify({"error": "Note invalide."}), 400
-    result = _engine.submit_flashcard(card_id, quality, data.get("document") or None)
+    result = _engine.submit_flashcard(card_id, quality, document, subject)
     return jsonify(result), (400 if "error" in result else 200)
 
 
 @app.route("/api/quiz/generate", methods=["POST"])
 def api_quiz_generate():
     data = request.get_json(silent=True) or {}
-    document = data.get("document") or None
+    document, subject = _scope(data)
     count = data.get("count", 8)
     if not _engine.has_index():
         return jsonify({"error": "Aucun document indexé. Ajoutez d'abord un PDF."}), 400
-    result = _engine.generate_quiz(document, count)
+    result = _engine.generate_quiz(document, count, subject=subject)
     return jsonify(result), (400 if "error" in result else 200)
 
 
 @app.route("/api/quiz/next", methods=["POST"])
 def api_quiz_next():
     data = request.get_json(silent=True) or {}
-    return jsonify(_engine.next_quiz(data.get("document") or None))
+    document, subject = _scope(data)
+    return jsonify(_engine.next_quiz(document, subject=subject))
 
 
 @app.route("/api/quiz/answer", methods=["POST"])
 def api_quiz_answer():
     data = request.get_json(silent=True) or {}
+    document, subject = _scope(data)
     card_id = data.get("card_id")
     selected = data.get("selected")
     if card_id is None or selected is None:
         return jsonify({"error": "Réponse manquante."}), 400
-    result = _engine.submit_quiz(card_id, selected, data.get("document") or None)
+    result = _engine.submit_quiz(card_id, selected, document, subject)
     return jsonify(result), (400 if "error" in result else 200)
 
 
@@ -267,16 +310,34 @@ def api_upload():
     filename = secure_filename(file.filename)
     if not filename.lower().endswith(".pdf"):
         return jsonify({"error": "Seuls les fichiers PDF sont acceptés."}), 400
-    header = file.stream.read(len(PDF_MAGIC))
+    content = file.stream.read()
     file.stream.seek(0)
-    if header != PDF_MAGIC:
+    if content[:len(PDF_MAGIC)] != PDF_MAGIC:
         return jsonify({"error": "Ce fichier n'est pas un PDF valide."}), 400
     destination = os.path.join(chatbot.DOCS_DIR, filename)
     if os.path.exists(destination):
         return jsonify({"error": f"« {filename} » existe déjà. Renomme le fichier ou supprime l'ancien de docs/."}), 409
+    duplicate = _find_duplicate_document(hashlib.sha256(content).hexdigest())
+    if duplicate:
+        return jsonify({"error": f"Contenu identique à « {duplicate} », déjà indexé."}), 409
     file.save(destination)
+    store.set_document_subject(filename, request.form.get("subject"))
     _engine.rebuild()
-    return jsonify({"message": f"« {filename} » ajouté et indexé.", "documents": _engine.documents()})
+    return jsonify(_documents_payload(f"« {filename} » ajouté et indexé."))
+
+
+@app.route("/api/documents/<name>", methods=["DELETE"])
+def api_delete_document(name):
+    filename = secure_filename(name)
+    if not filename.lower().endswith(".pdf"):
+        return jsonify({"error": "Nom de document invalide."}), 400
+    path = os.path.join(chatbot.DOCS_DIR, filename)
+    if not os.path.isfile(path):
+        return jsonify({"error": "Document introuvable."}), 404
+    os.remove(path)
+    store.delete_document(filename)
+    _engine.rebuild()
+    return jsonify(_documents_payload(f"« {filename} » supprimé."))
 
 
 if __name__ == "__main__":
