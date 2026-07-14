@@ -1,5 +1,6 @@
 import io
 import os
+import uuid
 
 import pytest
 from pypdf import PdfWriter
@@ -11,6 +12,7 @@ def blank_pdf_bytes():
     buffer = io.BytesIO()
     writer = PdfWriter()
     writer.add_blank_page(width=72, height=72)
+    writer.add_metadata({"/Title": uuid.uuid4().hex})
     writer.write(buffer)
     return buffer.getvalue()
 
@@ -135,6 +137,24 @@ def test_exercise_grade_rejects_malformed_payload(client):
     assert response.status_code == 400
 
 
+def test_serve_indexed_pdf_returns_pdf(client):
+    data = {"pdf": (io.BytesIO(blank_pdf_bytes()), "viewable.pdf")}
+    client.post("/api/upload", data=data)
+    response = client.get("/docs/viewable.pdf")
+    assert response.status_code == 200
+    assert response.mimetype == "application/pdf"
+
+
+def test_serve_rejects_non_pdf_name(client):
+    response = client.get("/docs/app.py")
+    assert response.status_code == 404
+
+
+def test_serve_missing_pdf_returns_404(client):
+    response = client.get("/docs/inexistant.pdf")
+    assert response.status_code == 404
+
+
 def test_export_csv_contains_bom_header_and_cards(client):
     store.add_cards("export.pdf", [{"question": "Q1;test", "answer": "A1"}])
     store.add_cards("export.pdf", [{"question": "Q2", "answer": "A2", "options": ["A2", "B", "C", "D"]}])
@@ -148,6 +168,54 @@ def test_export_csv_contains_bom_header_and_cards(client):
     assert body.startswith(chr(0xFEFF) + "question;reponse;source")
     assert '"Q1;test";A1;export.pdf' in body
     assert "Q2;A2;export.pdf" in body
+
+
+def test_upload_rejects_duplicate_content(client):
+    pdf = blank_pdf_bytes()
+    first = client.post("/api/upload", data={"pdf": (io.BytesIO(pdf), "original.pdf")})
+    assert first.status_code == 200
+    second = client.post("/api/upload", data={"pdf": (io.BytesIO(pdf), "copie.pdf")})
+    assert second.status_code == 409
+    assert "identique" in second.get_json()["error"]
+
+
+def test_delete_document_removes_file_and_cards(client):
+    data = {"pdf": (io.BytesIO(blank_pdf_bytes()), "todelete.pdf"), "subject": "crypto"}
+    client.post("/api/upload", data=data)
+    store.add_cards("todelete.pdf", [{"question": "Q", "answer": "A"}])
+
+    response = client.delete("/api/documents/todelete.pdf")
+
+    assert response.status_code == 200
+    assert not os.path.exists(os.path.join("docs", "todelete.pdf"))
+    assert store.all_cards("todelete.pdf") == []
+
+
+def test_delete_missing_document_returns_404(client):
+    response = client.delete("/api/documents/inexistant.pdf")
+    assert response.status_code == 404
+
+
+def test_upload_registers_subject(client):
+    data = {"pdf": (io.BytesIO(blank_pdf_bytes()), "crypto1.pdf"), "subject": "crypto"}
+    upload = client.post("/api/upload", data=data)
+    assert upload.status_code == 200
+
+    body = client.get("/api/documents").get_json()
+    assert body["document_subjects"].get("crypto1.pdf") == "crypto"
+    assert "crypto" in body["subjects"]
+
+
+def test_export_csv_filters_by_subject(client):
+    store.set_document_subject("scoped.pdf", "matiereX")
+    store.add_cards("scoped.pdf", [{"question": "QX", "answer": "AX"}])
+    store.add_cards("other.pdf", [{"question": "QY", "answer": "AY"}])
+
+    response = client.get("/api/export/csv?subject=matiereX")
+
+    body = response.get_data(as_text=True)
+    assert "scoped.pdf" in body
+    assert "other.pdf" not in body
 
 
 def test_export_csv_filters_by_document(client):

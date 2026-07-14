@@ -77,7 +77,7 @@
         .tab:disabled { opacity: .45; cursor: not-allowed; }
 
         .side-block { display: flex; flex-direction: column; gap: .4rem; padding-top: .9rem; border-top: 1px solid var(--line); }
-        .side-block select, .side-block input[type=file], .side-block button { width: 100%; }
+        .side-block select, .side-block input[type=file], .side-block input[type=text], .side-block button { width: 100%; }
         .side-foot { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding-top: .9rem; border-top: 1px solid var(--line); }
         .corpus { color: var(--muted); font-size: .82rem; }
         .corpus b { color: var(--ink); font-weight: 700; }
@@ -266,6 +266,13 @@
         @media (max-width: 600px) { .insight { flex-wrap: wrap; } .insight button { width: 100%; } }
 
         .dash-toolbar { display: flex; justify-content: flex-end; margin-bottom: .8rem; }
+        .doc-links { list-style: none; margin: .5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .25rem; }
+        .doc-links li { display: flex; align-items: center; gap: .3rem; }
+        .doc-links a { flex: 1; min-width: 0; color: var(--muted); font-size: .82rem; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .doc-links a:hover { color: var(--accent); text-decoration: underline; }
+        .doc-subject { color: var(--accent); font-size: .78rem; }
+        .doc-links .doc-del { flex: none; width: auto; background: none; border: none; color: var(--muted); cursor: pointer; font-size: .8rem; line-height: 1; padding: .1rem .35rem; border-radius: 4px; }
+        .doc-links .doc-del:hover { color: #dc2626; background: rgba(220, 38, 38, .12); }
         .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
         .dash-card { border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; background: var(--field); }
         .dash-card.dash-wide { grid-column: 1 / -1; }
@@ -327,16 +334,25 @@
         </nav>
 
         <div class="side-block">
-            <label class="field" for="document">Document</label>
+            <label class="field" for="document">Périmètre</label>
             <select id="document">
                 <option value="">Tout le corpus</option>
-                {% for doc in documents %}<option value="{{ doc }}">{{ doc }}</option>{% endfor %}
+                {% if subjects %}<optgroup label="Matières">
+                    {% for s in subjects %}<option value="subject:{{ s }}">{{ s }}</option>{% endfor %}
+                </optgroup>{% endif %}
+                <optgroup label="Documents">
+                    {% for doc in documents %}<option value="doc:{{ doc }}">{{ doc }}</option>{% endfor %}
+                </optgroup>
             </select>
+            <ul class="doc-links" id="doc-links">
+                {% for doc in documents %}<li><a href="/docs/{{ doc | urlencode }}" target="_blank" rel="noopener">{{ doc }}{% if document_subjects.get(doc) %} <span class="doc-subject">· {{ document_subjects[doc] }}</span>{% endif %}</a><button class="doc-del" data-doc="{{ doc }}" title="Supprimer" aria-label="Supprimer">✕</button></li>{% endfor %}
+            </ul>
         </div>
 
         <form class="upload side-block" id="upload-form" enctype="multipart/form-data">
             <label class="field" for="pdf">Ajouter un cours</label>
             <input type="file" id="pdf" name="pdf" accept="application/pdf">
+            <input type="text" id="subject" name="subject" placeholder="Matière (optionnel)" maxlength="60" autocomplete="off">
             <button type="submit">Indexer le PDF</button>
         </form>
 
