@@ -18,7 +18,7 @@ Le but n'est pas juste de retrouver une information (un chatbot le fait déjà),
 
 ## Fonctionnalités
 
-- **Q&A** : on pose une question en langage naturel, l'app répond à partir des passages les plus proches et cite ses sources (fichier + page).
+- **Q&A** : on pose une question en langage naturel, l'app répond à partir des passages les plus proches avec des citations ancrées : chaque affirmation porte un marqueur [n] cliquable qui déplie le passage exact (fichier + page) dont elle est tirée. Seuls les passages réellement cités sont listés en sources.
 - **Fiche** : synthèse structurée d'un document (idées clés, définitions, à retenir, questions d'auto-test).
 - **Feynman** : on explique un concept avec ses propres mots, l'IA confronte l'explication au cours et pointe ce qui est flou, faux ou manquant, avec des pistes à revoir. L'idée est de tester la compréhension, pas juste le rappel.
 - **Interroge-moi** : le système génère des cartes question/réponse, interroge, note la réponse de 0 à 5 (correction par l'IA) et la replanifie avec l'algorithme SM-2.
@@ -34,7 +34,7 @@ Le pipeline RAG (Retrieval-Augmented Generation) :
 1. **Découpage** : chaque PDF est lu avec `pypdf` et coupé en passages d'environ 800 mots, avec 150 mots de recouvrement pour ne pas perdre le fil entre deux passages.
 2. **Indexation** : chaque passage est encodé en vecteur avec le modèle `all-MiniLM-L6-v2` (sentence-transformers). L'index est mis en cache sur disque (`index_cache.json` + `index_cache.npz`, authentifiés par une signature HMAC), donc seuls les fichiers modifiés sont réencodés.
 3. **Recherche** : la question est encodée puis comparée aux passages par similarité cosinus ; les 4 plus proches forment le contexte.
-4. **Génération** : ce contexte est envoyé à un modèle Groq (`openai/gpt-oss-120b`) qui rédige la réponse en français et cite les sources.
+4. **Génération** : les passages sont numérotés puis envoyés à un modèle Groq (`openai/gpt-oss-120b`) qui rédige la réponse en français en citant chaque affirmation par son numéro [n]. Le serveur ne garde comme sources que les numéros réellement cités dans la réponse (avec repli sur tous les passages récupérés si le modèle n'en cite aucun), et l'interface rend chaque marqueur cliquable vers le passage exact.
 
 Pour la répétition espacée, chaque carte garde son état SM-2 (facilité, intervalle, prochaine échéance) dans une base SQLite. La note de 0 à 5 met à jour cet état : si la réponse est bonne, l'intervalle s'allonge ; si elle est mauvaise, la carte revient dès le lendemain. Seules les cartes arrivées à échéance sont proposées à la révision. Chaque révision est aussi journalisée (table `reviews`), ce qui alimente la courbe d'activité du tableau de bord. Les graphes sont rendus côté client avec Chart.js, la heatmap des échéances en CSS pur.
 

@@ -70,10 +70,12 @@ def test_rebuild_lists_documents_sorted(engine):
     assert engine.has_index()
 
 
-def test_ask_returns_answer_and_sources(engine):
+def test_ask_returns_answer_and_citations(engine):
     result = engine.ask("comment marche rsa ?")
     assert result["answer"] == "réponse factice"
-    assert result["sources"] == ["crypto.pdf p.1"]
+    assert result["citations"] == [
+        {"id": 1, "label": "crypto.pdf p.1", "text": CHUNKS[0].text},
+    ]
 
 
 def test_ask_sends_context_and_model_to_llm(engine):
@@ -81,20 +83,57 @@ def test_ask_sends_context_and_model_to_llm(engine):
     call = engine._client.calls[0]
     assert call["model"] == chatbot.GROQ_MODEL
     prompt = call["messages"][1]["content"]
-    assert "[crypto.pdf p.1]" in prompt
+    assert "[1] (crypto.pdf p.1)" in prompt
     assert "clé privée" in prompt
 
 
 def test_ask_filters_by_document(engine):
     result = engine.ask("parle-moi de rsa", document="reseaux.pdf")
-    assert result["sources"] == ["reseaux.pdf p.3"]
+    assert [c["label"] for c in result["citations"]] == ["reseaux.pdf p.3"]
 
 
 def test_ask_without_index_returns_no_passage(empty_engine):
     result = empty_engine.ask("n'importe quoi")
     assert result["answer"] == "Aucun passage pertinent trouvé."
-    assert result["sources"] == []
+    assert result["citations"] == []
     assert empty_engine._client.calls == []
+
+
+def test_ask_keeps_only_cited_passages(monkeypatch):
+    monkeypatch.setattr(chatbot, "discover_pdfs", lambda: ["crypto.pdf", "reseaux.pdf"])
+    monkeypatch.setattr(chatbot, "build_index_cached", lambda paths, model: (list(CHUNKS), EMBEDDINGS))
+    built = RagEngine(FakeGroqClient("La signature utilise la clé privée [1]."), FakeEmbedder(), top_k=2)
+    built.rebuild()
+    result = built.ask("comment marche rsa ?")
+    assert [c["id"] for c in result["citations"]] == [1]
+    assert result["citations"][0]["label"] == "crypto.pdf p.1"
+
+
+def test_ask_falls_back_to_all_passages_when_nothing_cited(monkeypatch):
+    monkeypatch.setattr(chatbot, "discover_pdfs", lambda: ["crypto.pdf", "reseaux.pdf"])
+    monkeypatch.setattr(chatbot, "build_index_cached", lambda paths, model: (list(CHUNKS), EMBEDDINGS))
+    built = RagEngine(FakeGroqClient("Réponse sans aucun marqueur."), FakeEmbedder(), top_k=2)
+    built.rebuild()
+    result = built.ask("comment marche rsa ?")
+    assert [c["id"] for c in result["citations"]] == [1, 2]
+
+
+def test_ask_ignores_out_of_range_citation_numbers(monkeypatch):
+    monkeypatch.setattr(chatbot, "discover_pdfs", lambda: ["crypto.pdf", "reseaux.pdf"])
+    monkeypatch.setattr(chatbot, "build_index_cached", lambda paths, model: (list(CHUNKS), EMBEDDINGS))
+    built = RagEngine(FakeGroqClient("Vrai [2], halluciné [7] et [0]."), FakeEmbedder(), top_k=2)
+    built.rebuild()
+    result = built.ask("comment marche rsa ?")
+    assert [c["id"] for c in result["citations"]] == [2]
+
+
+def test_ask_parses_grouped_citations(monkeypatch):
+    monkeypatch.setattr(chatbot, "discover_pdfs", lambda: ["crypto.pdf", "reseaux.pdf"])
+    monkeypatch.setattr(chatbot, "build_index_cached", lambda paths, model: (list(CHUNKS), EMBEDDINGS))
+    built = RagEngine(FakeGroqClient("Les deux passages concordent [1, 2]."), FakeEmbedder(), top_k=2)
+    built.rebuild()
+    result = built.ask("comment marche rsa ?")
+    assert [c["id"] for c in result["citations"]] == [1, 2]
 
 
 def test_feynman_returns_feedback_and_sources(engine):
