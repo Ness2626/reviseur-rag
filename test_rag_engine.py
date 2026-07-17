@@ -6,7 +6,7 @@ import pytest
 
 import chatbot
 import store
-from rag_engine import RagEngine, _within_budget
+from rag_engine import RERANK_CANDIDATES, RagEngine, _tokenize, _within_budget
 
 
 class FakeGroqClient:
@@ -31,6 +31,17 @@ class FakeEmbedder:
             lowered = text.lower()
             vectors.append([1.0 if word in lowered else 0.0 for word in self.VOCAB])
         return np.asarray(vectors)
+
+
+class FakeReranker:
+    """Note par recouvrement de mots avec la question — simule un vrai cross-encoder."""
+
+    def predict(self, pairs):
+        scores = []
+        for question, text in pairs:
+            score = len(set(_tokenize(question)) & set(_tokenize(text)))
+            scores.append(score)
+        return np.asarray(scores, dtype=float)
 
 
 CHUNKS = [
@@ -134,6 +145,69 @@ def test_ask_parses_grouped_citations(monkeypatch):
     built.rebuild()
     result = built.ask("comment marche rsa ?")
     assert [c["id"] for c in result["citations"]] == [1, 2]
+
+
+def test_rerank_promotes_late_ranked_literal_match(monkeypatch):
+    monkeypatch.setattr(chatbot, "discover_pdfs", lambda: [])
+    monkeypatch.setattr(chatbot, "build_index_cached", lambda paths, model: ([], None))
+    built = RagEngine(FakeGroqClient(), FakeEmbedder(), reranker=FakeReranker(), top_k=4)
+    literal_chunk = chatbot.Chunk("Le hash recalcule doit correspondre a la signature.", "x.pdf", 1)
+    filler_chunks = [
+        chatbot.Chunk(f"Chunk de remplissage sans rapport numero {i}.", "filler.pdf", i)
+        for i in range(9)
+    ]
+    built._chunks = filler_chunks + [literal_chunk]
+    candidates = list(range(len(built._chunks)))  # literal_chunk = 10e candidat (index 9)
+
+    best = built._rerank("le hash recalcule doit correspondre a la signature", candidates)
+
+    assert 9 in best
+    assert len(best) == 4
+
+
+def test_retrieve_uses_reranker_output_over_fusion_order(monkeypatch):
+    monkeypatch.setattr(chatbot, "discover_pdfs", lambda: [])
+    monkeypatch.setattr(chatbot, "build_index_cached", lambda paths, model: ([], None))
+    built = RagEngine(FakeGroqClient(), FakeEmbedder(), reranker=FakeReranker(), top_k=1)
+    filler = chatbot.Chunk("Un passage sans rapport avec la question.", "filler.pdf", 1)
+    literal_chunk = chatbot.Chunk("Le hash recalcule doit correspondre a la signature.", "x.pdf", 1)
+    built._chunks = [filler, literal_chunk]
+    monkeypatch.setattr(built, "_fuse_candidates", lambda question, indices: [0, 1])
+
+    retrieved = built._retrieve("le hash recalcule doit correspondre a la signature")
+
+    assert retrieved == [literal_chunk]
+
+
+def test_retrieve_limits_candidates_to_rerank_window(monkeypatch):
+    monkeypatch.setattr(chatbot, "discover_pdfs", lambda: [])
+    monkeypatch.setattr(chatbot, "build_index_cached", lambda paths, model: ([], None))
+    seen = {}
+
+    class RecordingReranker:
+        def predict(self, pairs):
+            seen["count"] = len(pairs)
+            return np.zeros(len(pairs))
+
+    built = RagEngine(FakeGroqClient(), FakeEmbedder(), reranker=RecordingReranker(), top_k=4)
+    built._chunks = [chatbot.Chunk(f"chunk {i}", "x.pdf", i) for i in range(30)]
+    monkeypatch.setattr(built, "_fuse_candidates", lambda question, indices: list(range(30)))
+
+    built._retrieve("question")
+
+    assert seen["count"] == RERANK_CANDIDATES
+
+
+def test_retrieve_without_reranker_keeps_fusion_order(monkeypatch):
+    monkeypatch.setattr(chatbot, "discover_pdfs", lambda: [])
+    monkeypatch.setattr(chatbot, "build_index_cached", lambda paths, model: ([], None))
+    built = RagEngine(FakeGroqClient(), FakeEmbedder(), top_k=2)
+    built._chunks = [chatbot.Chunk(f"chunk {i}", "x.pdf", i) for i in range(5)]
+    monkeypatch.setattr(built, "_fuse_candidates", lambda question, indices: [3, 1, 4, 0, 2])
+
+    retrieved = built._retrieve("question")
+
+    assert retrieved == [built._chunks[3], built._chunks[1]]
 
 
 def test_feynman_returns_feedback_and_sources(engine):
