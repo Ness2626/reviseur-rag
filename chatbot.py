@@ -205,7 +205,7 @@ def retrieve(question, chunks, embeddings, model, top_k=TOP_K):
     return [chunks[i] for i in best]
 
 
-def answer(client, question, chunks):
+def _answer_messages(question, chunks):
     context = "\n\n---\n\n".join(
         f"[{number}] ({chunk.label()})\n{chunk.text}"
         for number, chunk in enumerate(chunks, start=1)
@@ -218,15 +218,32 @@ def answer(client, question, chunks):
         "Si la réponse ne se trouve pas dans les passages, dis-le clairement.\n\n"
         f"Passages :\n{context}\n\nQuestion : {question}"
     )
+    return [
+        {"role": "system", "content": "Tu es un assistant qui répond en français de façon précise et concise."},
+        {"role": "user", "content": prompt},
+    ]
+
+
+def answer(client, question, chunks):
     response = client.chat.completions.create(
         model=GROQ_MODEL,
-        messages=[
-            {"role": "system", "content": "Tu es un assistant qui répond en français de façon précise et concise."},
-            {"role": "user", "content": prompt},
-        ],
+        messages=_answer_messages(question, chunks),
         temperature=0.2,
     )
     return response.choices[0].message.content
+
+
+def answer_stream(client, question, chunks):
+    stream = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=_answer_messages(question, chunks),
+        temperature=0.2,
+        stream=True,
+    )
+    for chunk in stream:
+        delta = chunk.choices[0].delta.content
+        if delta:
+            yield delta
 
 
 def feynman_feedback(client, concept, explanation, chunks):

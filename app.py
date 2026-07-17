@@ -1,6 +1,7 @@
 import csv
 import hashlib
 import io
+import json
 import os
 import sys
 from glob import glob
@@ -177,6 +178,10 @@ def api_exercise_grade():
     return jsonify(result)
 
 
+def _sse_event(payload):
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
 @app.route("/api/ask", methods=["POST"])
 def api_ask():
     data = request.get_json(silent=True) or {}
@@ -186,7 +191,12 @@ def api_ask():
         return jsonify({"error": "Question vide."}), 400
     if not _engine.has_index():
         return jsonify({"error": "Aucun document indexé. Ajoutez d'abord un PDF."}), 400
-    return jsonify(_engine.ask(question, document, subject))
+
+    def stream():
+        for event in _engine.ask_stream(question, document, subject):
+            yield _sse_event(event)
+
+    return Response(stream(), mimetype="text/event-stream")
 
 
 @app.route("/api/feynman", methods=["POST"])

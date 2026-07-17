@@ -64,6 +64,25 @@ def test_ask_without_index_returns_explicit_error(client):
     assert "Aucun document" in response.get_json()["error"]
 
 
+def test_ask_streams_sse_events(app_module, client, monkeypatch):
+    def fake_ask_stream(question, document, subject):
+        yield {"delta": "Bon"}
+        yield {"delta": "jour"}
+        yield {"citations": [{"id": 1, "label": "x.pdf p.1", "text": "un passage"}]}
+
+    monkeypatch.setattr(app_module._engine, "has_index", lambda: True)
+    monkeypatch.setattr(app_module._engine, "ask_stream", fake_ask_stream)
+
+    response = client.post("/api/ask", json={"question": "Salut ?"})
+
+    assert response.status_code == 200
+    assert response.mimetype == "text/event-stream"
+    body = response.get_data(as_text=True)
+    assert body.count("data: ") == 3
+    assert '"delta": "Bon"' in body
+    assert '"citations"' in body
+
+
 def test_feynman_requires_concept_and_explanation(client):
     response = client.post("/api/feynman", json={"concept": "RSA", "explanation": ""})
     assert response.status_code == 400

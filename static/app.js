@@ -132,6 +132,48 @@
             });
         });
 
+        const RENDER_THROTTLE_MS = 100;
+
+        const parseSseEvents = (buffer) => {
+            const parts = buffer.split("\n\n");
+            const remainder = parts.pop();
+            const events = parts
+                .map(part => part.split("\n").find(line => line.startsWith("data: ")))
+                .filter(Boolean)
+                .map(line => JSON.parse(line.slice(6)));
+            return {events, remainder};
+        };
+
+        const streamAskResponse = async (res, question) => {
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            let answer = "";
+            let lastRender = 0;
+            const render = (citations) => {
+                $("result").innerHTML =
+                    `<div class="answer"><div class="qlabel">${esc(question)}</div>` +
+                    linkCitations(md(answer), citations) +
+                    citationBlock(citations) +
+                    `</div>`;
+            };
+            while (true) {
+                const {done, value} = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, {stream: true});
+                const parsed = parseSseEvents(buffer);
+                buffer = parsed.remainder;
+                for (const event of parsed.events) {
+                    if (event.delta) {
+                        answer += event.delta;
+                        const now = performance.now();
+                        if (now - lastRender > RENDER_THROTTLE_MS) { render([]); lastRender = now; }
+                    }
+                    if (event.citations) { render(event.citations); }
+                }
+            }
+        };
+
         $("ask-form").addEventListener("submit", async (e) => {
             e.preventDefault();
             const question = $("question").value.trim();
@@ -143,14 +185,13 @@
                     headers: {"Content-Type": "application/json"},
                     body: JSON.stringify({question, ...scopeParams()})
                 });
-                const data = await res.json();
-                if (!res.ok) { $("result").innerHTML = ""; flash(data.error, true); return; }
-                const citations = data.citations || [];
-                $("result").innerHTML =
-                    `<div class="answer"><div class="qlabel">${question}</div>` +
-                    linkCitations(md(data.answer), citations) +
-                    citationBlock(citations) +
-                    `</div>`;
+                if (!res.ok) {
+                    const data = await res.json();
+                    $("result").innerHTML = "";
+                    flash(data.error, true);
+                    return;
+                }
+                await streamAskResponse(res, question);
             } catch (err) { $("result").innerHTML = ""; flash("Erreur réseau.", true); }
         });
 
