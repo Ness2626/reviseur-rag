@@ -11,10 +11,11 @@ import numpy as np
 from dotenv import load_dotenv
 from groq import Groq
 from pypdf import PdfReader
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import CrossEncoder, SentenceTransformer
 
 DOCS_DIR = "docs"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+RERANKER_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 GROQ_MODEL = "openai/gpt-oss-120b"
 GROQ_MAX_RETRIES = 5
 CHUNK_SIZE = 800
@@ -64,6 +65,10 @@ def load_chunks(paths):
             for piece in chunk_text(text):
                 chunks.append(Chunk(piece, source, page_number))
     return chunks
+
+
+def load_reranker():
+    return CrossEncoder(RERANKER_MODEL)
 
 
 def build_index(chunks, model):

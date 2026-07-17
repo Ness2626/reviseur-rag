@@ -14,6 +14,7 @@ MAX_CARDS = 15
 QUIZ_CORRECT_GRADE = 5
 QUIZ_WRONG_GRADE = 1
 RRF_K = 60
+RERANK_CANDIDATES = 20
 TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 CITATION_PATTERN = re.compile(r"\[(\d+(?:\s*[,;]\s*\d+)*)\]")
 
@@ -67,9 +68,10 @@ class RagEngine:
     révision (quiz, fiches, flashcards...) se branchent par-dessus cette classe.
     """
 
-    def __init__(self, groq_client, embedding_model, top_k=chatbot.TOP_K):
+    def __init__(self, groq_client, embedding_model, reranker=None, top_k=chatbot.TOP_K):
         self._client = groq_client
         self._model = embedding_model
+        self._reranker = reranker
         self._top_k = top_k
         self._lock = threading.Lock()
         self._chunks = []
@@ -104,15 +106,7 @@ class RagEngine:
             return list(self._chunks)
         return [chunk for chunk in self._chunks if chunk.source in allowed]
 
-    def _retrieve(self, question, document=None, subject=None):
-        allowed = self._scoped_sources(document, subject)
-        if allowed is None:
-            indices = list(range(len(self._chunks)))
-        else:
-            indices = [i for i, c in enumerate(self._chunks) if c.source in allowed]
-        if not indices:
-            return []
-
+    def _fuse_candidates(self, question, indices):
         subset = self._embeddings[indices]
         query_vec = self._model.encode([question], normalize_embeddings=True)[0]
         vector_scores = subset @ query_vec
@@ -122,8 +116,29 @@ class RagEngine:
         bm25_ranks = np.argsort(bm25_scores)[::-1]
 
         fused = _reciprocal_rank_fusion(vector_ranks, bm25_ranks)
-        best = fused[:self._top_k]
-        return [self._chunks[indices[i]] for i in best]
+        return [indices[i] for i in fused]
+
+    def _rerank(self, question, chunk_indices):
+        if self._reranker is None or not chunk_indices:
+            return chunk_indices[:self._top_k]
+        pairs = [(question, self._chunks[i].text) for i in chunk_indices]
+        scores = self._reranker.predict(pairs)
+        order = np.argsort(scores)[::-1][:self._top_k]
+        return [chunk_indices[i] for i in order]
+
+    def _retrieve(self, question, document=None, subject=None):
+        allowed = self._scoped_sources(document, subject)
+        if allowed is None:
+            indices = list(range(len(self._chunks)))
+        else:
+            indices = [i for i, c in enumerate(self._chunks) if c.source in allowed]
+        if not indices:
+            return []
+
+        fused_indices = self._fuse_candidates(question, indices)
+        candidates = fused_indices[:RERANK_CANDIDATES]
+        best = self._rerank(question, candidates)
+        return [self._chunks[i] for i in best]
 
     def ask(self, question, document=None, subject=None):
         with self._lock:

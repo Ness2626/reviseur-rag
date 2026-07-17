@@ -23,10 +23,11 @@ COPY requirements.txt .
 # --no-cache-dir : pip ne garde pas son cache de téléchargement → image plus petite.
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pré-téléchargement du modèle d'embeddings (~80 Mo) PENDANT le build.
-# Comme ça il est déjà dans l'image : le premier démarrage du conteneur est rapide
-# et ne dépend pas du réseau pour ce modèle.
+# Pré-téléchargement du modèle d'embeddings (~80 Mo) et du re-ranker cross-encoder
+# (~500 Mo) PENDANT le build. Comme ça ils sont déjà dans l'image : le premier
+# démarrage du conteneur est rapide et ne dépend pas du réseau pour ces modèles.
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')"
 
 # Maintenant on copie le reste du code de l'application.
 # Placé APRÈS l'install des deps : modifier le code n'invalide pas la couche pip (rebuild rapide).
