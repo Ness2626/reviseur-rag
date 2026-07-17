@@ -145,12 +145,47 @@
                 });
                 const data = await res.json();
                 if (!res.ok) { $("result").innerHTML = ""; flash(data.error, true); return; }
-                const sources = data.sources.map(s => `<span>${esc(s)}</span>`).join("");
+                const citations = data.citations || [];
                 $("result").innerHTML =
-                    `<div class="answer"><div class="qlabel">${question}</div>${md(data.answer)}` +
-                    (sources ? `<div class="sources"><strong>Sources :</strong><br>${sources}</div>` : "") +
+                    `<div class="answer"><div class="qlabel">${question}</div>` +
+                    linkCitations(md(data.answer), citations) +
+                    citationBlock(citations) +
                     `</div>`;
             } catch (err) { $("result").innerHTML = ""; flash("Erreur réseau.", true); }
+        });
+
+        const linkCitations = (html, citations) => {
+            const known = new Set(citations.map(c => c.id));
+            return html.replace(/\[(\d+(?:\s*[,;]\s*\d+)*)\]/g, (whole, group) => {
+                const numbers = group.split(/[,;]/).map(n => Number(n.trim()));
+                if (!numbers.every(n => known.has(n))) return whole;
+                return numbers.map(n =>
+                    `<sup class="cite-ref"><a href="#cite-${n}" data-cite="${n}">${n}</a></sup>`
+                ).join("");
+            });
+        };
+
+        const citationBlock = (citations) => {
+            if (!citations.length) return "";
+            const items = citations.map(c =>
+                `<details class="cite" id="cite-${c.id}">` +
+                `<summary><span class="cite-num">${c.id}</span>${esc(c.label)}</summary>` +
+                `<blockquote>${esc(c.text)}</blockquote></details>`
+            ).join("");
+            return `<div class="sources"><strong>Sources :</strong>${items}</div>`;
+        };
+
+        $("result").addEventListener("click", (e) => {
+            const ref = e.target.closest(".cite-ref a");
+            if (!ref) return;
+            e.preventDefault();
+            const target = $("cite-" + ref.dataset.cite);
+            if (!target) return;
+            target.open = true;
+            target.scrollIntoView({behavior: "smooth", block: "center"});
+            target.classList.remove("cite-flash");
+            void target.offsetWidth;
+            target.classList.add("cite-flash");
         });
 
         $("fiche-btn").addEventListener("click", async () => {

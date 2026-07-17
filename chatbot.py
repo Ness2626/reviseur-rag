@@ -201,13 +201,17 @@ def retrieve(question, chunks, embeddings, model, top_k=TOP_K):
 
 
 def answer(client, question, chunks):
-    context = "\n\n---\n\n".join(f"[{chunk.label()}]\n{chunk.text}" for chunk in chunks)
+    context = "\n\n---\n\n".join(
+        f"[{number}] ({chunk.label()})\n{chunk.text}"
+        for number, chunk in enumerate(chunks, start=1)
+    )
     prompt = (
-        "Réponds à la question en te basant uniquement sur le contexte ci-dessous. "
-        "Chaque passage est précédé de sa source entre crochets [fichier p.X]. "
-        "Cite la ou les sources utilisées entre crochets à la fin de ta réponse. "
-        "Si la réponse ne s'y trouve pas, dis-le clairement.\n\n"
-        f"Contexte :\n{context}\n\nQuestion : {question}"
+        "Réponds à la question en te basant uniquement sur les passages numérotés ci-dessous. "
+        "Après chaque affirmation tirée d'un passage, cite son numéro entre crochets, "
+        "par exemple [1] ou [2][3]. Ne cite que les passages réellement utilisés, "
+        "et n'ajoute pas de liste de sources à la fin. "
+        "Si la réponse ne se trouve pas dans les passages, dis-le clairement.\n\n"
+        f"Passages :\n{context}\n\nQuestion : {question}"
     )
     response = client.chat.completions.create(
         model=GROQ_MODEL,
@@ -406,7 +410,7 @@ def main():
             break
         retrieved = retrieve(question, chunks, embeddings, model)
         print("\n" + answer(client, question, retrieved))
-        sources = sorted({chunk.label() for chunk in retrieved})
+        sources = [f"[{number}] {chunk.label()}" for number, chunk in enumerate(retrieved, start=1)]
         print("Sources : " + ", ".join(sources) + "\n")
 
 

@@ -15,10 +15,32 @@ QUIZ_CORRECT_GRADE = 5
 QUIZ_WRONG_GRADE = 1
 RRF_K = 60
 TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+CITATION_PATTERN = re.compile(r"\[(\d+(?:\s*[,;]\s*\d+)*)\]")
 
 
 def _tokenize(text):
     return TOKEN_PATTERN.findall(text.lower())
+
+
+def _cited_numbers(answer_text, passage_count):
+    cited = set()
+    for match in CITATION_PATTERN.finditer(answer_text):
+        for number_text in re.findall(r"\d+", match.group(1)):
+            number = int(number_text)
+            if 1 <= number <= passage_count:
+                cited.add(number)
+    return cited
+
+
+def _build_citations(answer_text, retrieved):
+    cited = _cited_numbers(answer_text, len(retrieved))
+    if not cited:
+        cited = set(range(1, len(retrieved) + 1))
+    return [
+        {"id": number, "label": chunk.label(), "text": chunk.text}
+        for number, chunk in enumerate(retrieved, start=1)
+        if number in cited
+    ]
 
 
 def _reciprocal_rank_fusion(*rank_lists, k=RRF_K):
@@ -107,10 +129,9 @@ class RagEngine:
         with self._lock:
             retrieved = self._retrieve(question, document, subject)
         if not retrieved:
-            return {"answer": "Aucun passage pertinent trouvé.", "sources": []}
+            return {"answer": "Aucun passage pertinent trouvé.", "citations": []}
         answer = chatbot.answer(self._client, question, retrieved)
-        sources = sorted({chunk.label() for chunk in retrieved})
-        return {"answer": answer, "sources": sources}
+        return {"answer": answer, "citations": _build_citations(answer, retrieved)}
 
     def feynman(self, concept, explanation, document=None, subject=None):
         with self._lock:
