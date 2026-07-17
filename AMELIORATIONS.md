@@ -45,6 +45,21 @@ porte le contexte que le chunk perd.
 **Piège.** Valider l'heuristique sur les vrais PDF de cours **avant** d'écrire les
 tests — c'est le point le plus dépendant des données réelles de toute la liste.
 
+**Fait (validé sur les PDF réels).** La validation a écarté deux décisions initiales :
+- La règle « ligne courte / majuscules » sortait 112 faux positifs sur un deck de slides
+  (fragments de schémas : `LA`, `s=d(m,LA)`, `(m,s)`). **Abandonnée** au profit des seuls
+  titres numérotés `N.`/`N.N`, numéro à 1–2 chiffres (élimine les années type `2017 (…)`)
+  et ≤ 9 mots / 65 caractères (élimine les items de liste). Précision ~100 % sur les docs
+  rédigés (CARNET, certif) ; slides et PDF sans texte → fallback 800/150, zéro régression.
+- `CHUNKER_VERSION` **n'est pas** intégré à `file_signature` : celui-ci est comparé à un
+  SHA-256 brut dans la détection de doublons (point 14), le mélanger casserait ce contrôle.
+  Une fonction `cache_signature` distincte (`"{VERSION}:{sha256}"`) porte la version pour le
+  cache uniquement. `CHUNKER_VERSION = 2` a invalidé et réencodé l'index une fois.
+- Le préfixe `[Section : …] <texte>` entre dans l'embedding, dans le contexte LLM et
+  s'affiche dans la citation (l'utilisateur voit de quelle section vient l'extrait).
+  Titre carry-over d'une page à l'autre pour les sections à cheval, numéros de page
+  préservés (citations intactes). Tests : `test_chatbot.py`.
+
 ## 3. Streaming SSE des réponses — ½ à 1 journée
 
 **Pourquoi.** 5-10 s d'attente sans feedback sur les réponses longues.
@@ -246,14 +261,14 @@ classé 10e par RRF mais qui répond mot pour mot à la question doit finir dans
 
 ## Ordre conseillé
 
-Déjà faits : **point 1** (recherche hybride BM25), **point 3** (streaming SSE),
-**point 6** (export CSV), **point 11** (rouvrir un PDF), **point 12** (séparer par
-matière), **point 13** (supprimer un document), **point 14** (refus des doublons par
-contenu), **point 15** (re-ranking cross-encoder), plus les **citations ancrées** du
-Q&A (hors liste, inspirées de l'analyse de RAGFlow).
+Déjà faits : **point 1** (recherche hybride BM25), **point 2** (chunking par sections),
+**point 3** (streaming SSE), **point 6** (export CSV), **point 11** (rouvrir un PDF),
+**point 12** (séparer par matière), **point 13** (supprimer un document), **point 14**
+(refus des doublons par contenu), **point 15** (re-ranking cross-encoder), plus les
+**citations ancrées** du Q&A (hors liste, inspirées de l'analyse de RAGFlow).
 
 1. **Utiliser l'outil pour réviser** (0 min de dev) — c'est l'usage réel qui départage
-   la suite : chunks incohérents → point 2 ; PDF scannés → point 9.
+   la suite : PDF scannés → point 9.
 2. Manques visibles au premier test, rapides : **point 11** (rouvrir un PDF, ½ h)
    puis **point 12** (séparer par matière) — le point 12 est aussi le plus utile pour
    réviser une matière à la fois.

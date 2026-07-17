@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import sys
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ GROQ_MODEL = "openai/gpt-oss-120b"
 GROQ_MAX_RETRIES = 5
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 150
+CHUNKER_VERSION = 2
 TOP_K = 4
 CACHE_PATH = "index_cache"
 CACHE_KEY_PATH = ".cache_key"
@@ -55,15 +57,54 @@ def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
     return pieces
 
 
+SECTION_TITLE_RE = re.compile(r"^(\d{1,2}(?:\.\d{1,2})*[.)])\s+(\S.*)$")
+MAX_TITLE_WORDS = 9
+MAX_TITLE_CHARS = 65
+TITLE_TRIM_CHARS = " -‐–—:"
+
+
+def detect_section_title(line):
+    stripped = line.strip()
+    if len(stripped) > MAX_TITLE_CHARS or len(stripped.split()) > MAX_TITLE_WORDS:
+        return None
+    match = SECTION_TITLE_RE.match(stripped)
+    if not match:
+        return None
+    return match.group(2).strip(TITLE_TRIM_CHARS) or None
+
+
+def _emit_section(chunks, body_lines, title, source, page_number):
+    body = "\n".join(body_lines).strip()
+    if not body:
+        return
+    prefix = f"[Section : {title}] " if title else ""
+    for piece in chunk_text(body):
+        chunks.append(Chunk(prefix + piece, source, page_number))
+
+
+def chunk_pages(page_texts, source):
+    chunks = []
+    current_title = None
+    for page_number, text in enumerate(page_texts, start=1):
+        body_lines = []
+        for line in text.split("\n"):
+            title = detect_section_title(line)
+            if title is None:
+                body_lines.append(line)
+                continue
+            _emit_section(chunks, body_lines, current_title, source, page_number)
+            body_lines = []
+            current_title = title
+        _emit_section(chunks, body_lines, current_title, source, page_number)
+    return chunks
+
+
 def load_chunks(paths):
     chunks = []
     for path in paths:
         source = os.path.basename(path)
-        reader = PdfReader(path)
-        for page_number, page in enumerate(reader.pages, start=1):
-            text = page.extract_text() or ""
-            for piece in chunk_text(text):
-                chunks.append(Chunk(piece, source, page_number))
+        page_texts = [(page.extract_text() or "") for page in PdfReader(path).pages]
+        chunks.extend(chunk_pages(page_texts, source))
     return chunks
 
 
@@ -83,6 +124,10 @@ def file_signature(path):
         for block in iter(lambda: handle.read(8192), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def cache_signature(path):
+    return f"{CHUNKER_VERSION}:{file_signature(path)}"
 
 
 def _cache_files(cache_path=CACHE_PATH):
@@ -175,7 +220,7 @@ def build_index_cached(paths, model, cache_path=CACHE_PATH):
     encoded = 0
     for path in paths:
         source = os.path.basename(path)
-        signature = file_signature(path)
+        signature = cache_signature(path)
         cached = cache.get(source)
         if cached and cached["signature"] == signature:
             entry = cached
