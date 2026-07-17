@@ -200,6 +200,32 @@ même PDF sous deux noms différents était indexé deux fois.
 
 **Fichiers.** `app.py`, `test_app.py`.
 
+## 15. Re-ranker cross-encoder — ½ journée
+
+**Pourquoi.** La fusion RRF mélange les classements BM25 et vecteurs mais personne ne
+*relit* les passages : un chunk peut être bien classé par les deux voies sans vraiment
+répondre à la question. Un cross-encoder lit la paire (question, passage) en entier et
+la note — bien plus précis qu'une comparaison de vecteurs calculés séparément. C'est le
+« fused re-ranking » des moteurs RAG sérieux (RAGFlow), et ça bénéficie directement aux
+citations ancrées : meilleurs passages en entrée, meilleures citations en sortie.
+
+**Décisions prises.**
+- Modèle : `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` (multilingue, gère le
+  français ; via la classe `CrossEncoder` de sentence-transformers — aucune nouvelle
+  dépendance). Chargé au démarrage comme l'embedder.
+- Pipeline : RRF garde les **20** premiers candidats (au lieu de 4), le cross-encoder
+  note les 20 paires, on garde les 4 meilleures. Latence CPU ~centaines de ms,
+  négligeable devant l'appel LLM.
+- Le re-ranking s'applique à `_retrieve` (Q&A et Feynman en profitent), pas aux
+  générations de cartes/fiches (elles échantillonnent le corpus, pas une requête).
+- Poids du modèle (~500 Mo) : à télécharger dans le build Docker comme l'embedder,
+  sinon premier démarrage lent.
+
+**Fichiers.** `rag_engine.py` (`_retrieve`), `chatbot.py` (chargement), `Dockerfile`,
+`test_rag_engine.py`.
+**Test clé.** Avec un faux cross-encoder qui note par recouvrement de mots : un chunk
+classé 10e par RRF mais qui répond mot pour mot à la question doit finir dans le top 4.
+
 ## 10. LLM local Ollama — 1-2 journées (gros morceau, en dernier)
 
 **Décisions prises.**
@@ -222,11 +248,13 @@ même PDF sous deux noms différents était indexé deux fois.
 
 Déjà faits : **point 1** (recherche hybride BM25), **point 6** (export CSV),
 **point 11** (rouvrir un PDF), **point 12** (séparer par matière),
-**point 13** (supprimer un document), **point 14** (refus des doublons par contenu).
+**point 13** (supprimer un document), **point 14** (refus des doublons par contenu),
+plus les **citations ancrées** du Q&A (hors liste, inspirées de l'analyse de RAGFlow).
 
 1. **Utiliser l'outil pour réviser** (0 min de dev) — c'est l'usage réel qui départage
    la suite : retrieval qui rate des sigles → point 1 ; chunks incohérents → point 2 ;
-   attente pénible → point 3 ; PDF scannés → point 9.
+   passages récupérés à côté de la question → point 15 ; attente pénible → point 3 ;
+   PDF scannés → point 9.
 2. Manques visibles au premier test, rapides : **point 11** (rouvrir un PDF, ½ h)
    puis **point 12** (séparer par matière) — le point 12 est aussi le plus utile pour
    réviser une matière à la fois.
