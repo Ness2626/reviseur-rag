@@ -140,13 +140,19 @@ class RagEngine:
         best = self._rerank(question, candidates)
         return [self._chunks[i] for i in best]
 
-    def ask(self, question, document=None, subject=None):
+    def ask_stream(self, question, document=None, subject=None):
         with self._lock:
             retrieved = self._retrieve(question, document, subject)
         if not retrieved:
-            return {"answer": "Aucun passage pertinent trouvé.", "citations": []}
-        answer = chatbot.answer(self._client, question, retrieved)
-        return {"answer": answer, "citations": _build_citations(answer, retrieved)}
+            yield {"delta": "Aucun passage pertinent trouvé."}
+            yield {"citations": []}
+            return
+        answer_parts = []
+        for delta in chatbot.answer_stream(self._client, question, retrieved):
+            answer_parts.append(delta)
+            yield {"delta": delta}
+        full_answer = "".join(answer_parts)
+        yield {"citations": _build_citations(full_answer, retrieved)}
 
     def feynman(self, concept, explanation, document=None, subject=None):
         with self._lock:

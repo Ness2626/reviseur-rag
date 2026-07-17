@@ -18,8 +18,18 @@ class FakeGroqClient:
     def _create(self, **kwargs):
         self.calls.append(kwargs)
         content = self._responses.pop(0) if self._responses else "réponse factice"
+        if kwargs.get("stream"):
+            return self._stream_chunks(content)
         message = SimpleNamespace(content=content)
         return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+    @staticmethod
+    def _stream_chunks(content):
+        words = content.split(" ")
+        for index, word in enumerate(words):
+            piece = word if index == 0 else " " + word
+            delta = SimpleNamespace(content=piece)
+            yield SimpleNamespace(choices=[SimpleNamespace(delta=delta)])
 
 
 class FakeEmbedder:
@@ -76,35 +86,51 @@ def workdir(tmp_path, monkeypatch):
     return tmp_path
 
 
+def _consume_ask(engine, *args, **kwargs):
+    events = list(engine.ask_stream(*args, **kwargs))
+    answer = "".join(event["delta"] for event in events if "delta" in event)
+    citations = next(event["citations"] for event in events if "citations" in event)
+    return {"answer": answer, "citations": citations}
+
+
 def test_rebuild_lists_documents_sorted(engine):
     assert engine.documents() == ["crypto.pdf", "reseaux.pdf"]
     assert engine.has_index()
 
 
 def test_ask_returns_answer_and_citations(engine):
-    result = engine.ask("comment marche rsa ?")
+    result = _consume_ask(engine, "comment marche rsa ?")
     assert result["answer"] == "réponse factice"
     assert result["citations"] == [
         {"id": 1, "label": "crypto.pdf p.1", "text": CHUNKS[0].text},
     ]
 
 
+def test_ask_streams_deltas_before_citations(engine):
+    events = list(engine.ask_stream("comment marche rsa ?"))
+    assert [e for e in events if "delta" in e] == [
+        {"delta": "réponse"}, {"delta": " factice"},
+    ]
+    assert events[-1] == {"citations": [{"id": 1, "label": "crypto.pdf p.1", "text": CHUNKS[0].text}]}
+
+
 def test_ask_sends_context_and_model_to_llm(engine):
-    engine.ask("comment marche rsa ?")
+    list(engine.ask_stream("comment marche rsa ?"))
     call = engine._client.calls[0]
     assert call["model"] == chatbot.GROQ_MODEL
+    assert call["stream"] is True
     prompt = call["messages"][1]["content"]
     assert "[1] (crypto.pdf p.1)" in prompt
     assert "clé privée" in prompt
 
 
 def test_ask_filters_by_document(engine):
-    result = engine.ask("parle-moi de rsa", document="reseaux.pdf")
+    result = _consume_ask(engine, "parle-moi de rsa", document="reseaux.pdf")
     assert [c["label"] for c in result["citations"]] == ["reseaux.pdf p.3"]
 
 
 def test_ask_without_index_returns_no_passage(empty_engine):
-    result = empty_engine.ask("n'importe quoi")
+    result = _consume_ask(empty_engine, "n'importe quoi")
     assert result["answer"] == "Aucun passage pertinent trouvé."
     assert result["citations"] == []
     assert empty_engine._client.calls == []
@@ -115,7 +141,7 @@ def test_ask_keeps_only_cited_passages(monkeypatch):
     monkeypatch.setattr(chatbot, "build_index_cached", lambda paths, model: (list(CHUNKS), EMBEDDINGS))
     built = RagEngine(FakeGroqClient("La signature utilise la clé privée [1]."), FakeEmbedder(), top_k=2)
     built.rebuild()
-    result = built.ask("comment marche rsa ?")
+    result = _consume_ask(built, "comment marche rsa ?")
     assert [c["id"] for c in result["citations"]] == [1]
     assert result["citations"][0]["label"] == "crypto.pdf p.1"
 
@@ -125,7 +151,7 @@ def test_ask_falls_back_to_all_passages_when_nothing_cited(monkeypatch):
     monkeypatch.setattr(chatbot, "build_index_cached", lambda paths, model: (list(CHUNKS), EMBEDDINGS))
     built = RagEngine(FakeGroqClient("Réponse sans aucun marqueur."), FakeEmbedder(), top_k=2)
     built.rebuild()
-    result = built.ask("comment marche rsa ?")
+    result = _consume_ask(built, "comment marche rsa ?")
     assert [c["id"] for c in result["citations"]] == [1, 2]
 
 
@@ -134,7 +160,7 @@ def test_ask_ignores_out_of_range_citation_numbers(monkeypatch):
     monkeypatch.setattr(chatbot, "build_index_cached", lambda paths, model: (list(CHUNKS), EMBEDDINGS))
     built = RagEngine(FakeGroqClient("Vrai [2], halluciné [7] et [0]."), FakeEmbedder(), top_k=2)
     built.rebuild()
-    result = built.ask("comment marche rsa ?")
+    result = _consume_ask(built, "comment marche rsa ?")
     assert [c["id"] for c in result["citations"]] == [2]
 
 
@@ -143,7 +169,7 @@ def test_ask_parses_grouped_citations(monkeypatch):
     monkeypatch.setattr(chatbot, "build_index_cached", lambda paths, model: (list(CHUNKS), EMBEDDINGS))
     built = RagEngine(FakeGroqClient("Les deux passages concordent [1, 2]."), FakeEmbedder(), top_k=2)
     built.rebuild()
-    result = built.ask("comment marche rsa ?")
+    result = _consume_ask(built, "comment marche rsa ?")
     assert [c["id"] for c in result["citations"]] == [1, 2]
 
 
