@@ -23,10 +23,11 @@ def main():
         page = browser.new_page(viewport={"width": 1280, "height": 900}, device_scale_factor=2)
         page.goto(BASE_URL, wait_until="networkidle")
 
-        # Q&A : poser une question et attendre la réponse (appel LLM)
+        # Q&A : poser une question et attendre la fin du streaming (pas juste le
+        # premier token, qui affiche déjà ".answer" en cours de génération)
         page.fill("#question", "Qu'est-ce qu'une signature numérique et à quoi sert-elle ?")
         page.click("#ask-form button")
-        page.wait_for_selector("#result .answer", timeout=60000)
+        page.wait_for_selector("#result .cite", timeout=60000)
         page.screenshot(path=str(OUT_DIR / "01-qa.png"))
 
         # Feynman : expliquer un concept (volontairement imparfait) et voir la critique
