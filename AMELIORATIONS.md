@@ -249,11 +249,11 @@ classé 10e par RRF mais qui répond mot pour mot à la question doit finir dans
 Déjà faits : **point 1** (recherche hybride BM25), **point 6** (export CSV),
 **point 11** (rouvrir un PDF), **point 12** (séparer par matière),
 **point 13** (supprimer un document), **point 14** (refus des doublons par contenu),
-plus les **citations ancrées** du Q&A (hors liste, inspirées de l'analyse de RAGFlow).
+**point 15** (re-ranking cross-encoder), plus les **citations ancrées** du Q&A
+(hors liste, inspirées de l'analyse de RAGFlow).
 
 1. **Utiliser l'outil pour réviser** (0 min de dev) — c'est l'usage réel qui départage
-   la suite : retrieval qui rate des sigles → point 1 ; chunks incohérents → point 2 ;
-   passages récupérés à côté de la question → point 15 ; attente pénible → point 3 ;
+   la suite : chunks incohérents → point 2 ; attente pénible → point 3 ;
    PDF scannés → point 9.
 2. Manques visibles au premier test, rapides : **point 11** (rouvrir un PDF, ½ h)
    puis **point 12** (séparer par matière) — le point 12 est aussi le plus utile pour
