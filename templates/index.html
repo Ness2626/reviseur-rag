@@ -10,7 +10,7 @@
             --bg-grad: radial-gradient(1200px 600px at 70% -10%, #e0e7ff 0%, transparent 55%), var(--bg);
             --card: #ffffff;
             --ink: #0f172a;
-            --muted: #64748b;
+            --muted: #556072;
             --line: #e2e8f0;
             --accent: #4f46e5;
             --accent-dark: #4338ca;
@@ -49,6 +49,7 @@
             transition: background-color .25s, color .25s;
         }
         .app { display: grid; grid-template-columns: 250px 1fr; gap: 1.4rem; align-items: start; }
+        .app > * { min-width: 0; }
 
         .sidebar {
             position: sticky; top: 1.5rem; display: flex; flex-direction: column; gap: 1rem;
@@ -141,7 +142,7 @@
         }
 
         form.row { display: flex; gap: .6rem; }
-        input[type=text] { flex: 1; }
+        input[type=text] { flex: 1; min-width: 0; }
         button {
             padding: .6rem 1.3rem; font-size: .95rem; font-weight: 600; border: 0;
             border-radius: 10px; background: var(--accent); color: var(--btn-text); cursor: pointer;
@@ -236,7 +237,7 @@
             display: inline-block; background: var(--accent-soft); color: var(--accent-dark);
             border-radius: 999px; padding: .35rem .95rem; font-size: .82rem; font-weight: 600; margin-bottom: .9rem;
         }
-        .recall-actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: .4rem; }
+        .recall-actions { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-bottom: .4rem; }
         textarea {
             width: 100%; min-height: 90px; padding: .7rem .8rem; font-size: .95rem; font-family: inherit;
             border: 1px solid var(--line); border-radius: 10px; resize: vertical; margin: .3rem 0 .6rem;
@@ -350,6 +351,7 @@
         button.rate:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-dark); }
 
         .upload { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+        .qa-examples { display: flex; flex-direction: column; gap: .5rem; width: 100%; max-width: 34ch; }
         .file-control {
             position: relative; display: flex; align-items: center; gap: .55rem;
             padding: .6rem .7rem; border: 1px solid var(--line); border-radius: 10px;
@@ -362,12 +364,9 @@
         .file-control:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
         .file-control.has-file span { color: var(--ink); }
         .file-input-native { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; padding: 0; }
-        .upload button { background: #475569; color: #fff; }
-        .upload button:hover { background: #334155; }
-        [data-theme="dark"] .upload button { background: #334155; }
     </style>
 </head>
-<body>
+<body data-documents='{{ documents | tojson }}'>
     <div class="toast-container" id="toasts"></div>
 
     <div class="app">
@@ -378,7 +377,7 @@
             </div>
             <div>
                 <div class="brand-name">Réviseur RAG</div>
-                <div class="brand-sub">Révise tes cours par RAG</div>
+                <div class="brand-sub">Révise tes cours depuis tes PDF</div>
             </div>
         </div>
 
@@ -463,26 +462,23 @@
         </div>
 
         <div class="panel" id="panel-recall">
-            <div class="progress" id="recall-progress">—</div>
             <div class="recall-actions">
-                <button class="ghost" id="gen-cards-btn">Générer des questions</button>
+                <div class="progress" id="recall-progress">—</div>
+                <button id="gen-cards-btn">Générer des questions</button>
             </div>
-            <div class="hint">Génère un jeu de questions depuis tes cours, puis réponds de mémoire : l'IA te note et reprogramme chaque carte (répétition espacée).</div>
             <div id="study-area"></div>
         </div>
 
         <div class="panel" id="panel-quiz">
-            <div class="progress" id="quiz-progress">—</div>
             <div class="recall-actions">
-                <button class="ghost" id="gen-quiz-btn">Générer un QCM</button>
+                <div class="progress" id="quiz-progress">—</div>
+                <button id="gen-quiz-btn">Générer un QCM</button>
             </div>
-            <div class="hint">Questions à choix multiples (une ou plusieurs bonnes réponses) générées depuis tes cours. Bonne ou mauvaise réponse, la carte est replanifiée (répétition espacée).</div>
             <div id="quiz-area"></div>
         </div>
 
         <div class="panel" id="panel-flashcards">
             <div class="progress" id="flash-progress">—</div>
-            <div class="hint">Même jeu de cartes que « Interroge-moi », révisé en autonomie : révèle la réponse et note-toi (pas de correction IA). Génère d'abord des questions dans l'onglet « Interroge-moi ».</div>
             <div id="flash-area"></div>
         </div>
 

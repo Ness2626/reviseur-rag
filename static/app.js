@@ -85,9 +85,16 @@
             return html;
         };
 
+        const parseInitialDocuments = () => {
+            try { return JSON.parse(document.body.dataset.documents || "[]"); }
+            catch (err) { return []; }
+        };
+        let indexedDocuments = parseInitialDocuments();
+
         const refreshDocuments = (documents, subjects, docSubjects) => {
             subjects = subjects || [];
             docSubjects = docSubjects || {};
+            indexedDocuments = documents;
             $("corpus").textContent = documents.length;
             const select = $("document");
             const current = select.value;
@@ -121,6 +128,28 @@
             $(areaId).innerHTML = `<div class="empty">${EMPTY_ICON}<p>${message}</p>${btn}</div>`;
             if (cta) $(areaId).querySelector(".cta-empty").addEventListener("click", cta.onClick);
         };
+        const QA_EXAMPLE_TEMPLATES = [
+            (d) => `Résume les points clés de ${d}`,
+            (d) => `Quelles sont les définitions importantes de ${d} ?`,
+            (d) => `Donne un exemple concret tiré de ${d}`,
+        ];
+        const qaExampleQuestions = (docs) => {
+            if (!docs.length) return [];
+            const count = docs.length === 1 ? 2 : 3;
+            const picks = [];
+            for (let i = 0; i < count; i++) picks.push(docs[i % docs.length]);
+            return picks.map((d, i) => QA_EXAMPLE_TEMPLATES[i](d));
+        };
+        const showQaEmptyState = () => {
+            const questions = qaExampleQuestions(indexedDocuments);
+            if (!questions.length) { $("result").innerHTML = ""; return; }
+            const buttons = questions.map(q =>
+                `<button class="ghost qa-example" data-q="${escAttr(q)}">${esc(q)}</button>`
+            ).join("");
+            $("result").innerHTML =
+                `<div class="empty">${EMPTY_ICON}<p>Pose une question sur tes cours, ou essaie :</p>` +
+                `<div class="qa-examples">${buttons}</div></div>`;
+        };
         const MARK_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
         const MARK_KO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
         const DOC_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>';
@@ -137,6 +166,7 @@
                 tab.classList.add("active");
                 $("panel-" + tab.dataset.mode).classList.add("active");
                 $("result").innerHTML = "";
+                if (tab.dataset.mode === "qa") showQaEmptyState();
                 if (tab.dataset.mode === "recall") loadNextCard();
                 if (tab.dataset.mode === "quiz") startQuizSession();
                 if (tab.dataset.mode === "flashcards") loadNextFlash();
@@ -231,6 +261,12 @@
         };
 
         $("result").addEventListener("click", (e) => {
+            const example = e.target.closest(".qa-example");
+            if (example) {
+                $("question").value = example.dataset.q;
+                $("ask-form").requestSubmit();
+                return;
+            }
             const ref = e.target.closest(".cite-ref a");
             if (!ref) return;
             e.preventDefault();
@@ -345,7 +381,7 @@
             showProgress(data.progress);
             if (!data.card) {
                 emptyState("study-area",
-                    "Aucune question à réviser pour l'instant.",
+                    "Aucune question à réviser. Génère un jeu de questions depuis tes cours : réponds de mémoire, l'IA te note et reprogramme chaque carte.",
                     {label: "Générer des questions", onClick: generateCards});
                 return;
             }
@@ -428,7 +464,7 @@
             if (!data.card) {
                 quizTotal = null;
                 emptyState("quiz-area",
-                    "Aucune question à réviser pour l'instant.",
+                    "Aucune question à réviser. Génère un QCM depuis tes cours : bonne ou mauvaise réponse, la carte est replanifiée.",
                     {label: "Générer un QCM", onClick: generateQuiz});
                 return;
             }
@@ -526,7 +562,7 @@
             showFlashProgress(data.progress);
             if (!data.card) {
                 emptyState("flash-area",
-                    "Aucune carte à réviser. Génère d'abord des questions dans « Interroge-moi ».");
+                    "Aucune carte à réviser. Même jeu que « Interroge-moi » (révision en autonomie, sans correction IA) : génère d'abord des questions dans l'onglet « Interroge-moi ».");
                 return;
             }
             renderFlash(data.card);
@@ -619,7 +655,7 @@
                         y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: line } } } }
             }));
 
-            const docs = data.by_document.map(d => d.document === "corpus" ? "Tout le corpus" : d.document);
+            const docs = data.by_document.map(d => d.document === "corpus" ? "Cartes multi-documents" : d.document);
             dashCharts.push(new Chart($("chart-docs"), {
                 type: "bar",
                 data: { labels: docs, datasets: [
@@ -798,3 +834,4 @@
             if ($("panel-dashboard").classList.contains("active")) loadDashboard();
         });
         refreshStats();
+        showQaEmptyState();
