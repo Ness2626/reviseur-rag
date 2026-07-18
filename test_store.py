@@ -182,3 +182,24 @@ def test_record_review_logs_history(db):
     assert today_entry["date"] == "2026-01-01"
     assert today_entry["count"] == 1
     assert today_entry["avg_quality"] == 4.0
+
+
+def test_feynman_history_empty_by_default(db):
+    assert store.feynman_history(db_path=db) == []
+
+
+def test_feynman_history_returns_entries_newest_first(db):
+    store.add_feynman_entry("RSA", "explication A", "retour A", db_path=db)
+    store.add_feynman_entry("Diffie-Hellman", "explication B", "retour B", db_path=db)
+    history = store.feynman_history(db_path=db)
+    assert [e["concept"] for e in history] == ["Diffie-Hellman", "RSA"]
+    assert history[0]["explanation"] == "explication B"
+    assert history[0]["feedback"] == "retour B"
+    assert "created_at" in history[0]
+
+
+def test_feynman_history_respects_limit(db):
+    for i in range(15):
+        store.add_feynman_entry(f"concept {i}", "e", "f", db_path=db)
+    assert len(store.feynman_history(limit=5, db_path=db)) == 5
+    assert store.feynman_history(db_path=db)[0]["concept"] == "concept 14"

@@ -128,6 +128,7 @@
                 if (tab.dataset.mode === "quiz") startQuizSession();
                 if (tab.dataset.mode === "flashcards") loadNextFlash();
                 if (tab.dataset.mode === "exercises") reviewExercise();
+                if (tab.dataset.mode === "feynman") loadFeynmanHistory();
                 if (tab.dataset.mode === "dashboard") loadDashboard();
             });
         });
@@ -267,9 +268,25 @@
                     (sources ? `<div class="sources"><strong>Basé sur :</strong><br>${sources}</div>` : "") +
                     `<div class="hint">Complète ton explication ci-dessus et revalide pour creuser.</div>` +
                     `</div>`;
+                loadFeynmanHistory();
             } catch (err) { $("feynman-area").innerHTML = ""; flash("Erreur réseau.", true); }
             finally { btn.disabled = false; }
         });
+
+        const loadFeynmanHistory = async () => {
+            try {
+                const res = await fetch("/api/feynman/history");
+                const entries = (await res.json()).entries || [];
+                if (!entries.length) { $("feynman-history").innerHTML = ""; return; }
+                const items = entries.map(e =>
+                    `<details class="cite"><summary>${esc(e.concept)}` +
+                    `<span class="fh-date">${esc(e.created_at.slice(0, 10))}</span></summary>` +
+                    `<div class="fh-body"><div class="fh-label">Ton explication</div>${md(e.explanation)}` +
+                    `<div class="fh-label">Retour</div>${md(e.feedback)}</div></details>`
+                ).join("");
+                $("feynman-history").innerHTML = `<div class="fh-title">Tes explications précédentes</div>${items}`;
+            } catch (err) { /* historique non bloquant */ }
+        };
 
         const showProgress = (p) => {
             $("recall-progress").textContent =

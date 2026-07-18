@@ -3,7 +3,7 @@
 import json
 import sqlite3
 import threading
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import scheduler
 
@@ -13,6 +13,7 @@ YOUNG_INTERVAL_DAYS = 7
 MATURE_INTERVAL_DAYS = 21
 DUE_HORIZON_DAYS = 34
 HISTORY_DAYS = 13
+FEYNMAN_HISTORY_LIMIT = 10
 _lock = threading.Lock()
 
 
@@ -100,6 +101,17 @@ def init_db(db_path=DB_PATH):
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS feynman_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                concept TEXT NOT NULL,
+                explanation TEXT NOT NULL,
+                feedback TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
 
 
 def add_cards(document, cards, db_path=DB_PATH):
@@ -166,6 +178,26 @@ def delete_document(name, db_path=DB_PATH):
         )
         conn.execute("DELETE FROM cards WHERE document = ?", (name,))
         conn.execute("DELETE FROM documents WHERE name = ?", (name,))
+
+
+def add_feynman_entry(concept, explanation, feedback, db_path=DB_PATH):
+    created_at = datetime.now().isoformat(timespec="seconds")
+    with _lock, _connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO feynman_history (concept, explanation, feedback, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (concept, explanation, feedback, created_at),
+        )
+
+
+def feynman_history(limit=FEYNMAN_HISTORY_LIMIT, db_path=DB_PATH):
+    with _lock, _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT concept, explanation, feedback, created_at FROM feynman_history "
+            "ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def next_due_card(document=None, kind=None, today=None, db_path=DB_PATH, subject=None):
