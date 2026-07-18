@@ -139,6 +139,11 @@ se présente vraiment dans les cours.
   `try/except ImportError` avec message clair « installez l'extra OCR ».
 - `CHUNKER_VERSION` (point 2) sert aussi ici pour invalider le cache.
 
+**Abandonné (test de faisabilité, juillet 2026).** Les 3 scannés du corpus sont des
+photos de slides annotées à la main et tournées à 90° : tesseract y sortirait du bruit,
+et leur contenu est déjà couvert par les docs texte. Si besoin un jour, passer par un
+modèle vision (pas tesseract), qui gère rotation et manuscrit.
+
 ## 11. Rouvrir un PDF indexé — ½ heure
 
 **Pourquoi.** Une fois un document ajouté, on ne peut plus le consulter. Manque
