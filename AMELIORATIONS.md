@@ -267,10 +267,11 @@ classé 10e par RRF mais qui répond mot pour mot à la question doit finir dans
 ## Ordre conseillé
 
 Déjà faits : **point 1** (recherche hybride BM25), **point 2** (chunking par sections),
-**point 3** (streaming SSE), **point 6** (export CSV), **point 11** (rouvrir un PDF),
-**point 12** (séparer par matière), **point 13** (supprimer un document), **point 14**
-(refus des doublons par contenu), **point 15** (re-ranking cross-encoder), plus les
-**citations ancrées** du Q&A (hors liste, inspirées de l'analyse de RAGFlow).
+**point 3** (streaming SSE), **point 6** (export CSV), **point 8** (historique Feynman),
+**point 11** (rouvrir un PDF), **point 12** (séparer par matière), **point 13** (supprimer
+un document), **point 14** (refus des doublons par contenu), **point 15** (re-ranking
+cross-encoder), plus les **citations ancrées** du Q&A (hors liste, inspirées de RAGFlow).
+Point 9 (OCR) écarté après test de faisabilité.
 
 1. **Utiliser l'outil pour réviser** (0 min de dev) — c'est l'usage réel qui départage
    la suite : PDF scannés → point 9.
