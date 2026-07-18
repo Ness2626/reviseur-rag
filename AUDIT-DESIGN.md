@@ -1,5 +1,9 @@
 # Audit design — juillet 2026
 
+Corrigés : P1 (1-4), P2 (5-8), 10 et 12, plus le débordement horizontal mobile et
+l'envoi du champ matière à l'upload (bug trouvé en relecture). Restent 9 et 11,
+cosmétiques.
+
 Constats classés par impact. Basé sur les 8 écrans × 2 thèmes + mobile.
 Ce qui marche déjà : tokens de thème propres (le dark tient), focus rings sur les
 champs, bande de reco du dashboard, heatmap CSS, microcopy courte.
