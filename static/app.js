@@ -37,6 +37,19 @@
             if ($("panel-dashboard").classList.contains("active")) loadDashboard();
         });
 
+        const MOBILE_BREAKPOINT_PX = 760;
+        const syncSideExtras = () => { $("side-extras").open = window.innerWidth > MOBILE_BREAKPOINT_PX; };
+        syncSideExtras();
+        window.addEventListener("resize", syncSideExtras);
+
+        const PDF_PLACEHOLDER = "Choisir un PDF…";
+        const updatePdfFilename = () => {
+            const file = $("pdf").files[0];
+            $("pdf-filename").textContent = file ? file.name : PDF_PLACEHOLDER;
+            $("pdf-control").classList.toggle("has-file", Boolean(file));
+        };
+        $("pdf").addEventListener("change", updatePdfFilename);
+
         const escAttr = (s) => esc(s).replace(/"/g, "&quot;");
         const scopeParams = () => {
             const v = $("document").value;
@@ -97,8 +110,8 @@
                 const s = await res.json();
                 $("stat-due").textContent = s.due;
                 $("stat-learned").textContent = s.learned;
-                $("stat-total").textContent = s.total;
                 $("stat-docs").textContent = s.documents;
+                $("stat-good-card").classList.toggle("has-value", Number(s.learned) > 0);
             } catch (err) { /* stats non bloquantes */ }
         };
 
@@ -748,6 +761,7 @@
             if (!fileInput.files.length) { flash("Aucun fichier sélectionné.", true); return; }
             const body = new FormData();
             body.append("pdf", fileInput.files[0]);
+            body.append("subject", $("subject").value.trim());
             flash("Indexation en cours…", false);
             try {
                 const res = await fetch("/api/upload", {method: "POST", body});
@@ -755,6 +769,7 @@
                 if (!res.ok) { flash(data.error, true); return; }
                 refreshDocuments(data.documents, data.subjects, data.document_subjects);
                 fileInput.value = "";
+                updatePdfFilename();
                 $("subject").value = "";
                 refreshStats();
                 flash(data.message, false);

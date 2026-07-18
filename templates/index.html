@@ -21,6 +21,7 @@
             --field: #ffffff;
             --shadow: 0 1px 2px rgba(15,23,42,.05), 0 8px 24px -16px rgba(15,23,42,.18);
             --radius: 14px;
+            --btn-text: #fff;
         }
         [data-theme="dark"] {
             --bg: #0b1120;
@@ -37,6 +38,7 @@
             --bad: #f87171; --bad-soft: #2b1517;
             --field: #0f1729;
             --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px -18px rgba(0,0,0,.7);
+            --btn-text: #0b1120;
         }
         * { box-sizing: border-box; }
         body {
@@ -73,11 +75,20 @@
         }
         .tab svg { width: 18px; height: 18px; flex: none; }
         .tab:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-dark); }
-        .tab.active { background: var(--accent); color: #fff; box-shadow: 0 6px 16px -8px var(--accent); }
+        .tab.active { background: var(--accent); color: var(--btn-text); box-shadow: 0 6px 16px -8px var(--accent); }
         .tab:disabled { opacity: .45; cursor: not-allowed; }
 
+        .side-extras { display: flex; flex-direction: column; gap: 1rem; }
+        .side-extras summary {
+            display: none; align-items: center; justify-content: space-between;
+            padding: .6rem .75rem; border: 1px solid var(--line); border-radius: 10px;
+            color: var(--muted); font-size: .85rem; font-weight: 600; cursor: pointer;
+            list-style: none;
+        }
+        .side-extras summary::-webkit-details-marker { display: none; }
+        .side-extras summary::after { content: "▾"; }
         .side-block { display: flex; flex-direction: column; gap: .4rem; padding-top: .9rem; border-top: 1px solid var(--line); }
-        .side-block select, .side-block input[type=file], .side-block input[type=text], .side-block button { width: 100%; }
+        .side-block select, .side-block .file-control, .side-block input[type=text], .side-block button { width: 100%; }
         .side-foot { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding-top: .9rem; border-top: 1px solid var(--line); }
         .corpus { color: var(--muted); font-size: .82rem; }
         .corpus b { color: var(--ink); font-weight: 700; }
@@ -89,7 +100,7 @@
         .theme-toggle svg { width: 18px; height: 18px; }
         .theme-toggle:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
 
-        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: .8rem; margin-bottom: 1.25rem; }
+        .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8rem; margin-bottom: 1.25rem; }
         .stat {
             display: flex; align-items: center; gap: .7rem; background: var(--card);
             border: 1px solid var(--line); border-radius: var(--radius); padding: .9rem 1rem; box-shadow: var(--shadow);
@@ -100,7 +111,8 @@
         }
         .stat-ic svg { width: 19px; height: 19px; }
         .stat.due .stat-ic { background: var(--bad-soft); color: var(--bad); }
-        .stat.good .stat-ic { background: var(--good-soft); color: var(--good); }
+        .stat.good .stat-ic { background: var(--accent-soft); color: var(--accent-dark); }
+        .stat.good.has-value .stat-ic { background: var(--good-soft); color: var(--good); }
         .stat-val { font-size: 1.45rem; font-weight: 700; line-height: 1.1; letter-spacing: -.02em; }
         .stat-lbl { color: var(--muted); font-size: .78rem; }
 
@@ -110,6 +122,7 @@
             .tabs { flex-direction: row; flex-wrap: wrap; }
             .tab { width: auto; }
             .stats-row { grid-template-columns: repeat(2, 1fr); }
+            .side-extras summary { display: flex; }
         }
 
         .card {
@@ -131,7 +144,7 @@
         input[type=text] { flex: 1; }
         button {
             padding: .6rem 1.3rem; font-size: .95rem; font-weight: 600; border: 0;
-            border-radius: 10px; background: var(--accent); color: #fff; cursor: pointer;
+            border-radius: 10px; background: var(--accent); color: var(--btn-text); cursor: pointer;
             transition: background .15s, transform .1s, box-shadow .15s;
         }
         button:hover { background: var(--accent-dark); }
@@ -337,8 +350,19 @@
         button.rate:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-dark); }
 
         .upload { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
-        .upload input[type=file] { flex: 1; font-size: .88rem; color: var(--muted); }
-        .upload button { background: #475569; }
+        .file-control {
+            position: relative; display: flex; align-items: center; gap: .55rem;
+            padding: .6rem .7rem; border: 1px solid var(--line); border-radius: 10px;
+            background: var(--field); color: var(--muted); font-size: .88rem;
+            cursor: pointer; overflow: hidden; transition: border-color .15s, box-shadow .15s;
+        }
+        .file-control svg { width: 16px; height: 16px; flex: none; }
+        .file-control span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .file-control:hover { border-color: var(--accent); }
+        .file-control:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+        .file-control.has-file span { color: var(--ink); }
+        .file-input-native { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; padding: 0; }
+        .upload button { background: #475569; color: #fff; }
         .upload button:hover { background: #334155; }
         [data-theme="dark"] .upload button { background: #334155; }
     </style>
@@ -369,41 +393,48 @@
             <button class="tab" data-mode="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span>Tableau de bord</span></button>
         </nav>
 
-        <div class="side-block">
-            <label class="field" for="document">Périmètre</label>
-            <select id="document">
-                <option value="">Tout le corpus</option>
-                {% if subjects %}<optgroup label="Matières">
-                    {% for s in subjects %}<option value="subject:{{ s }}">{{ s }}</option>{% endfor %}
-                </optgroup>{% endif %}
-                <optgroup label="Documents">
-                    {% for doc in documents %}<option value="doc:{{ doc }}">{{ doc }}</option>{% endfor %}
-                </optgroup>
-            </select>
-            <ul class="doc-links" id="doc-links">
-                {% for doc in documents %}<li><a href="/docs/{{ doc | urlencode }}" target="_blank" rel="noopener">{{ doc }}{% if document_subjects.get(doc) %} <span class="doc-subject">· {{ document_subjects[doc] }}</span>{% endif %}</a><button class="doc-del" data-doc="{{ doc }}" title="Supprimer" aria-label="Supprimer">✕</button></li>{% endfor %}
-            </ul>
-        </div>
+        <details class="side-extras" id="side-extras" open>
+            <summary>Documents &amp; périmètre</summary>
 
-        <form class="upload side-block" id="upload-form" enctype="multipart/form-data">
-            <label class="field" for="pdf">Ajouter un cours</label>
-            <input type="file" id="pdf" name="pdf" accept="application/pdf">
-            <input type="text" id="subject" name="subject" placeholder="Matière (optionnel)" maxlength="60" autocomplete="off">
-            <button type="submit">Indexer le PDF</button>
-        </form>
+            <div class="side-block">
+                <label class="field" for="document">Périmètre</label>
+                <select id="document">
+                    <option value="">Tout le corpus</option>
+                    {% if subjects %}<optgroup label="Matières">
+                        {% for s in subjects %}<option value="subject:{{ s }}">{{ s }}</option>{% endfor %}
+                    </optgroup>{% endif %}
+                    <optgroup label="Documents">
+                        {% for doc in documents %}<option value="doc:{{ doc }}">{{ doc }}</option>{% endfor %}
+                    </optgroup>
+                </select>
+                <ul class="doc-links" id="doc-links">
+                    {% for doc in documents %}<li><a href="/docs/{{ doc | urlencode }}" target="_blank" rel="noopener">{{ doc }}{% if document_subjects.get(doc) %} <span class="doc-subject">· {{ document_subjects[doc] }}</span>{% endif %}</a><button class="doc-del" data-doc="{{ doc }}" title="Supprimer" aria-label="Supprimer">✕</button></li>{% endfor %}
+                </ul>
+            </div>
 
-        <div class="side-foot">
-            <span class="corpus"><b id="corpus">{{ documents | length }}</b> document(s)</span>
-            <button class="theme-toggle" id="theme-toggle" type="button" title="Basculer le thème" aria-label="Basculer le thème"></button>
-        </div>
-        <div class="disclaimer">L'IA peut faire des erreurs, vérifie avec ton cours.</div>
+            <form class="upload side-block" id="upload-form" enctype="multipart/form-data">
+                <label class="field" for="pdf">Ajouter un cours</label>
+                <label class="file-control" id="pdf-control">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                    <span id="pdf-filename">Choisir un PDF…</span>
+                    <input type="file" id="pdf" name="pdf" accept="application/pdf" class="file-input-native">
+                </label>
+                <input type="text" id="subject" name="subject" placeholder="Matière (optionnel)" maxlength="60" autocomplete="off">
+                <button type="submit">Indexer le PDF</button>
+            </form>
+
+            <div class="side-foot">
+                <span class="corpus"><b id="corpus">{{ documents | length }}</b> document(s)</span>
+                <button class="theme-toggle" id="theme-toggle" type="button" title="Basculer le thème" aria-label="Basculer le thème"></button>
+            </div>
+            <div class="disclaimer">L'IA peut faire des erreurs, vérifie avec ton cours.</div>
+        </details>
       </aside>
 
       <main class="main">
         <div class="stats-row">
             <div class="stat due" title="Cartes dues aujourd'hui — toutes activités (QCM + questions), sur le périmètre sélectionné"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div><div class="stat-val" id="stat-due">—</div><div class="stat-lbl">À réviser</div></div></div>
-            <div class="stat good" title="Cartes revues plusieurs fois avec succès (répétition espacée)"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div><div class="stat-val" id="stat-learned">—</div><div class="stat-lbl">Maîtrisées</div></div></div>
-            <div class="stat" title="Nombre total de cartes (QCM + questions) sur le périmètre sélectionné"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div><div><div class="stat-val" id="stat-total">—</div><div class="stat-lbl">Cartes</div></div></div>
+            <div class="stat good" id="stat-good-card" title="Cartes revues plusieurs fois avec succès (répétition espacée)"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><div><div class="stat-val" id="stat-learned">—</div><div class="stat-lbl">Maîtrisées</div></div></div>
             <div class="stat" title="Nombre de PDF indexés dans le corpus"><div class="stat-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div><div><div class="stat-val" id="stat-docs">—</div><div class="stat-lbl">Documents</div></div></div>
         </div>
         <div class="scope-line">Statistiques pour : <b id="scope-label">tout le corpus</b></div>
