@@ -213,6 +213,11 @@ def api_feynman():
     return jsonify(result), (400 if "error" in result else 200)
 
 
+@app.route("/api/feynman/history")
+def api_feynman_history():
+    return jsonify({"entries": _engine.feynman_history()})
+
+
 @app.route("/api/fiche", methods=["POST"])
 def api_fiche():
     data = request.get_json(silent=True) or {}

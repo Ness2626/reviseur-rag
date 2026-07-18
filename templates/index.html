@@ -231,6 +231,11 @@
         }
         #panel-feynman input[type=text] { width: 100%; margin-bottom: .6rem; }
         #feynman-area { margin-top: 1rem; }
+        #feynman-history { margin-top: 1.6rem; }
+        .fh-title { font-size: .82rem; font-weight: 600; color: var(--muted); margin-bottom: .5rem; }
+        .fh-date { margin-left: auto; color: var(--muted); font-size: .78rem; font-weight: 400; }
+        .fh-label { font-size: .75rem; font-weight: 600; color: var(--accent-dark); margin: .5rem 0 .1rem; }
+        .fh-body { font-size: .88rem; }
         .disclaimer { font-size: .72rem; color: var(--muted); opacity: .7; margin-top: .35rem; }
         .q-counter { font-size: .78rem; font-weight: 600; color: var(--muted); margin-bottom: .5rem; }
         .card-question { font-size: 1.08rem; font-weight: 600; margin: .2rem 0 .8rem; }
@@ -423,6 +428,7 @@
             <button id="feynman-btn">Vérifier mon explication</button>
             <div class="hint">Explique un concept avec tes mots, comme à un débutant, pour voir si tu maîtrises les notions. <em>(méthode Feynman)</em></div>
             <div id="feynman-area"></div>
+            <div id="feynman-history"></div>
         </div>
 
         <div class="panel" id="panel-recall">

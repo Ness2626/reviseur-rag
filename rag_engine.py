@@ -160,8 +160,12 @@ class RagEngine:
         if not retrieved:
             return {"error": "Aucun passage pertinent trouvé pour ce concept."}
         feedback = chatbot.feynman_feedback(self._client, concept, explanation, retrieved)
+        store.add_feynman_entry(concept, explanation, feedback)
         sources = sorted({chunk.label() for chunk in retrieved})
         return {"feedback": feedback, "sources": sources}
+
+    def feynman_history(self):
+        return store.feynman_history()
 
     def generate_fiche(self, document=None, subject=None):
         with self._lock:

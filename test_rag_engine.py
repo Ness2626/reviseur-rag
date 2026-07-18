@@ -236,10 +236,19 @@ def test_retrieve_without_reranker_keeps_fusion_order(monkeypatch):
     assert retrieved == [built._chunks[3], built._chunks[1]]
 
 
-def test_feynman_returns_feedback_and_sources(engine):
+def test_feynman_returns_feedback_and_sources(engine, workdir):
     result = engine.feynman("rsa", "on signe avec la clé privée")
     assert result["feedback"] == "réponse factice"
     assert result["sources"] == ["crypto.pdf p.1"]
+
+
+def test_feynman_records_history(engine, workdir):
+    engine.feynman("rsa", "on signe avec la clé privée")
+    history = engine.feynman_history()
+    assert len(history) == 1
+    assert history[0]["concept"] == "rsa"
+    assert history[0]["explanation"] == "on signe avec la clé privée"
+    assert history[0]["feedback"] == "réponse factice"
 
 
 def test_feynman_without_index_returns_error(empty_engine):
