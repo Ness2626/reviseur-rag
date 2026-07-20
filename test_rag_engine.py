@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 import chatbot
+import exercises
 import store
 from rag_engine import RERANK_CANDIDATES, RagEngine, _tokenize, _within_budget
 
@@ -348,3 +349,138 @@ def test_within_budget_downsamples_but_keeps_at_least_one():
     kept = _within_budget(chunks, budget=4000)
     assert 1 <= len(kept) <= 4
     assert _within_budget(chunks[:1], budget=10)
+
+
+def test_submit_exercise_reschedules_skill(engine, workdir):
+    store.ensure_skills(["modexp"])
+    exercise = exercises.new_exercise("modexp")
+    answer = pow(exercise["params"]["a"], exercise["params"]["b"], exercise["params"]["n"])
+    result = engine.submit_exercise("modexp", exercise["params"], answer)
+    assert result["correct"] is True
+    assert result["next_due_in_days"] >= 1
+    assert result["progress"]["learned"] == 0
+
+
+def test_submit_exercise_unknown_kind_returns_error(engine, workdir):
+    assert "error" in engine.submit_exercise("inconnu", {}, 1)
+
+
+def test_new_exam_mixes_cards_and_exercises(engine, workdir):
+    store.add_cards("crypto.pdf", [
+        {"question": f"Ouverte sur la signature RSA {i}", "answer": "A"} for i in range(5)
+    ])
+    store.add_cards("crypto.pdf", [
+        {"question": f"Qcm sur la signature RSA {i}", "answer": json.dumps(["a"]), "options": ["a", "b"]}
+        for i in range(5)
+    ])
+    result = engine.new_exam(count=10, document="crypto.pdf")
+    assert len(result["questions"]) == 10
+    assert {q["type"] for q in result["questions"]} == {"open", "quiz", "exercise"}
+
+
+def test_new_exam_without_cards_returns_error(engine, workdir):
+    assert "error" in engine.new_exam(count=10, document="crypto.pdf")
+
+
+def test_new_exam_stays_inside_scope(engine, workdir):
+    store.add_cards("crypto.pdf", [{"question": "Dans le périmètre", "answer": "A"}])
+    store.add_cards("reseaux.pdf", [{"question": "Hors périmètre", "answer": "A"}])
+    result = engine.new_exam(count=3, document="crypto.pdf")
+    cards = [q for q in result["questions"] if q["type"] != "exercise"]
+    assert [q["document"] for q in cards] == ["crypto.pdf"]
+
+
+def test_grade_exam_scores_out_of_twenty_and_records_history(engine, workdir):
+    store.add_cards("crypto.pdf", [{"question": "Q", "answer": json.dumps(["a"]), "options": ["a", "b"]}])
+    card = store.next_due_card("crypto.pdf", kind="quiz")
+    result = engine.grade_exam([{"type": "quiz", "card_id": card["id"], "selected": ["a"]}], duration_s=120)
+    assert result["score"] == 20.0
+    assert result["max_score"] == 20
+    assert store.recent_exams()[0]["duration_s"] == 120
+
+
+def test_grade_exam_averages_partial_open_answer(engine, workdir):
+    store.add_cards("crypto.pdf", [
+        {"question": "Ouverte", "answer": "A"},
+        {"question": "Qcm", "answer": json.dumps(["a"]), "options": ["a", "b"]},
+    ])
+    open_card = store.next_due_card("crypto.pdf", kind="open")
+    quiz_card = store.next_due_card("crypto.pdf", kind="quiz")
+    engine._client._responses = [json.dumps({"score": 3, "feedback": "Correct dans l'ensemble."})]
+    result = engine.grade_exam([
+        {"type": "open", "card_id": open_card["id"], "answer": "ma réponse"},
+        {"type": "quiz", "card_id": quiz_card["id"], "selected": ["b"]},
+    ])
+    assert [r["ratio"] for r in result["results"]] == [0.6, 0.0]
+    assert result["score"] == 6.0
+
+
+def test_grade_exam_counts_blank_answer_as_zero_without_calling_llm(engine, workdir):
+    store.add_cards("crypto.pdf", [{"question": "Ouverte", "answer": "La bonne réponse"}])
+    card = store.next_due_card("crypto.pdf", kind="open")
+    result = engine.grade_exam([{"type": "open", "card_id": card["id"], "answer": "   "}])
+    assert result["score"] == 0.0
+    assert result["results"][0]["reference"] == "La bonne réponse"
+    assert engine._client.calls == []
+
+
+def test_grade_exam_feeds_spaced_repetition(engine, workdir):
+    store.add_cards("crypto.pdf", [{"question": "Q", "answer": json.dumps(["a"]), "options": ["a", "b"]}])
+    card = store.next_due_card("crypto.pdf", kind="quiz")
+    engine.grade_exam([{"type": "quiz", "card_id": card["id"], "selected": ["a"]}])
+    assert store.next_due_card("crypto.pdf", kind="quiz") is None
+
+
+def test_grade_exam_rejects_unknown_card(engine, workdir):
+    assert "error" in engine.grade_exam([{"type": "open", "card_id": 999, "answer": "x"}])
+
+
+def test_grade_exam_rejects_empty_copy(engine, workdir):
+    assert "error" in engine.grade_exam([])
+
+
+def test_new_exam_skips_exercises_when_scope_is_off_topic(engine, workdir):
+    store.add_cards("reseaux.pdf", [
+        {"question": f"Le protocole TCP garantit l'ordre des segments {i} ?", "answer": "A"} for i in range(6)
+    ])
+    result = engine.new_exam(count=5, document="reseaux.pdf")
+    assert [q["type"] for q in result["questions"]] == ["open"] * 5
+
+
+def test_new_exam_keeps_exercises_when_scope_covers_them(engine, workdir):
+    store.add_cards("crypto.pdf", [
+        {"question": f"Comment vérifier une signature RSA {i} ?", "answer": "A"} for i in range(6)
+    ])
+    result = engine.new_exam(count=5, document="crypto.pdf")
+    assert sum(q["type"] == "exercise" for q in result["questions"]) == 1
+
+
+def test_new_exam_matches_exercise_on_card_topic(engine, workdir):
+    store.add_cards("cours.pdf", [
+        {"question": f"Question neutre {i}", "answer": "A", "topic": "exponentiation modulaire"}
+        for i in range(6)
+    ])
+    result = engine.new_exam(count=5, document="cours.pdf")
+    exercise = next(q for q in result["questions"] if q["type"] == "exercise")
+    assert exercise["kind"] == "modexp"
+
+
+def test_grade_exam_lists_missed_notions_to_review(engine, workdir):
+    store.add_cards("crypto.pdf", [
+        {"question": "Ratée", "answer": json.dumps(["a"]), "options": ["a", "b"], "topic": "signature RSA"},
+        {"question": "Réussie", "answer": json.dumps(["a"]), "options": ["a", "b"], "topic": "certificats"},
+    ])
+    missed, passed = store.sample_cards(2, kind="quiz"), None
+    missed = sorted(missed, key=lambda c: c["question"])
+    result = engine.grade_exam([
+        {"type": "quiz", "card_id": missed[0]["id"], "selected": ["b"]},
+        {"type": "quiz", "card_id": missed[1]["id"], "selected": ["a"]},
+    ])
+    assert result["to_review"] == ["signature RSA"]
+
+
+def test_grade_exam_falls_back_to_document_when_card_has_no_topic(engine, workdir):
+    store.add_cards("crypto.pdf", [{"question": "Q", "answer": json.dumps(["a"]), "options": ["a", "b"]}])
+    card = store.next_due_card("crypto.pdf", kind="quiz")
+    result = engine.grade_exam([{"type": "quiz", "card_id": card["id"], "selected": ["b"]}])
+    assert result["to_review"] == ["crypto.pdf"]

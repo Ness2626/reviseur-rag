@@ -85,26 +85,85 @@
             return html;
         };
 
-        const parseInitialDocuments = () => {
-            try { return JSON.parse(document.body.dataset.documents || "[]"); }
-            catch (err) { return []; }
+        const parseInitialData = (key, fallback) => {
+            try { return JSON.parse(document.body.dataset[key] || fallback); }
+            catch (err) { return JSON.parse(fallback); }
         };
-        let indexedDocuments = parseInitialDocuments();
+        let indexedDocuments = parseInitialData("documents", "[]");
+        let indexedSubjects = parseInitialData("subjects", "[]");
+        let documentSubjects = parseInitialData("documentSubjects", "{}");
+        let unindexedDocuments = parseInitialData("unindexed", "[]");
 
-        const refreshDocuments = (documents, subjects, docSubjects) => {
-            subjects = subjects || [];
-            docSubjects = docSubjects || {};
+        const docLinkItem = (doc) => {
+            const subject = documentSubjects[doc] || "";
+            const label = subject || "+ matière";
+            return `<li><div class="doc-row">` +
+                `<a href="/docs/${encodeURIComponent(doc)}" target="_blank" rel="noopener">${esc(doc)}</a>` +
+                `<button class="doc-del" data-doc="${escAttr(doc)}" title="Supprimer" aria-label="Supprimer">✕</button></div>` +
+                `<button class="doc-subject${subject ? "" : " unset"}" data-doc="${escAttr(doc)}" ` +
+                `data-subject="${escAttr(subject)}" title="Modifier la matière">${esc(label)}</button></li>`;
+        };
+
+        const deadLinkItem = (doc) =>
+            `<li class="doc-dead"><div class="doc-row">` +
+            `<a href="/docs/${encodeURIComponent(doc)}" target="_blank" rel="noopener">${esc(doc)}</a>` +
+            `<button class="doc-del" data-doc="${escAttr(doc)}" title="Supprimer" aria-label="Supprimer">✕</button></div>` +
+            `<span class="doc-warn" title="Aucun texte extractible : PDF scanné ou composé d'images. ` +
+            `Rien n'en est indexé.">non indexé — aucun texte</span></li>`;
+
+        const refreshDocuments = (documents, subjects, docSubjects, unindexed) => {
             indexedDocuments = documents;
+            indexedSubjects = subjects || [];
+            documentSubjects = docSubjects || {};
+            unindexedDocuments = unindexed || [];
             $("corpus").textContent = documents.length;
             const select = $("document");
             const current = select.value;
-            select.innerHTML = buildScopeOptions(documents, subjects);
+            select.innerHTML = buildScopeOptions(documents, indexedSubjects);
             select.value = current;
-            $("doc-links").innerHTML = documents.map(d => {
-                const tag = docSubjects[d] ? ` <span class="doc-subject">· ${esc(docSubjects[d])}</span>` : "";
-                return `<li><a href="/docs/${encodeURIComponent(d)}" target="_blank" rel="noopener">${esc(d)}${tag}</a>` +
-                    `<button class="doc-del" data-doc="${escAttr(d)}" title="Supprimer" aria-label="Supprimer">✕</button></li>`;
-            }).join("");
+            $("doc-links").innerHTML =
+                documents.map(docLinkItem).join("") + unindexedDocuments.map(deadLinkItem).join("");
+        };
+
+        const saveSubject = async (doc, subject) => {
+            try {
+                const res = await fetch(`/api/documents/${encodeURIComponent(doc)}/subject`, {
+                    method: "PUT", headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({subject})
+                });
+                const data = await res.json();
+                if (!res.ok) { flash(data.error, true); return; }
+                refreshDocuments(data.documents, data.subjects, data.document_subjects, data.unindexed);
+                refreshStats();
+                flash(data.message, false);
+            } catch (err) { flash("Erreur réseau.", true); }
+        };
+
+        const SUBJECT_MAX_LENGTH = 60;
+
+        const editSubject = (button) => {
+            const doc = button.dataset.doc;
+            const input = document.createElement("input");
+            input.type = "text";
+            input.className = "doc-subject-input";
+            input.value = button.dataset.subject;
+            input.maxLength = SUBJECT_MAX_LENGTH;
+            input.placeholder = "Matière";
+            button.replaceWith(input);
+            input.focus();
+            input.select();
+            let settled = false;
+            const close = (save) => {
+                if (settled) return;
+                settled = true;
+                if (save && input.value.trim() !== button.dataset.subject) saveSubject(doc, input.value.trim());
+                else refreshDocuments(indexedDocuments, indexedSubjects, documentSubjects, unindexedDocuments);
+            };
+            input.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") close(true);
+                if (e.key === "Escape") close(false);
+            });
+            input.addEventListener("blur", () => close(true));
         };
 
         const refreshStats = async () => {
@@ -568,6 +627,7 @@
             renderFlash(data.card);
         };
 
+        const UNCLASSIFIED_TOPIC = "Non classé";
         let dashCharts = [];
         const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
         const shortDate = (iso) => { const [, m, d] = iso.split("-"); return `${d}/${m}`; };
@@ -667,7 +727,41 @@
                         y: { stacked: true, grid: { display: false } } } }
             }));
 
+            renderTopics(data.by_topic || [], {good, accent, line});
+            renderExams(data.exams || [], {accent, line});
             renderHeatmap(data.due_calendar, data.overdue);
+        };
+
+        const renderTopics = (topics, colors) => {
+            const hasTopics = topics.some(t => t.topic !== UNCLASSIFIED_TOPIC);
+            $("dash-topic-card").style.display = hasTopics ? "" : "none";
+            if (!hasTopics) return;
+            dashCharts.push(new Chart($("chart-topics"), {
+                type: "bar",
+                data: { labels: topics.map(t => t.topic), datasets: [
+                    { label: "Maîtrisées", data: topics.map(t => t.learned), backgroundColor: colors.good },
+                    { label: "À apprendre", data: topics.map(t => t.total - t.learned), backgroundColor: colors.accent } ] },
+                options: { indexAxis: "y", responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: "bottom", labels: { boxWidth: 12 } } },
+                    scales: { x: { stacked: true, beginAtZero: true, ticks: { precision: 0 }, grid: { color: colors.line } },
+                        y: { stacked: true, grid: { display: false } } } }
+            }));
+        };
+
+        const renderExams = (exams, colors) => {
+            $("dash-exam-card").style.display = exams.length ? "" : "none";
+            if (!exams.length) return;
+            dashCharts.push(new Chart($("chart-exams"), {
+                type: "line",
+                data: { labels: exams.map(e => shortDate(e.taken_at.slice(0, 10))),
+                    datasets: [{ data: exams.map(e => e.score), label: "Note / 20",
+                        borderColor: colors.accent, backgroundColor: colors.accent + "33",
+                        fill: true, tension: .3, pointRadius: 3 }] },
+                options: { responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { grid: { display: false } },
+                        y: { beginAtZero: true, max: 20, grid: { color: colors.line } } } }
+            }));
         };
 
         const loadDashboard = async () => {
@@ -791,6 +885,166 @@
         $("exo-new-btn").addEventListener("click", loadExercise);
         $("exo-kind").addEventListener("change", loadExercise);
 
+        let examQuestions = [];
+        let examTimerId = null;
+        let examStartedAt = 0;
+
+        const examElapsedSeconds = () => Math.round((Date.now() - examStartedAt) / 1000);
+        const formatDuration = (seconds) => {
+            const m = String(Math.floor(seconds / 60)).padStart(2, "0");
+            return `${m}:${String(seconds % 60).padStart(2, "0")}`;
+        };
+
+        const stopExamTimer = () => {
+            if (examTimerId) clearInterval(examTimerId);
+            examTimerId = null;
+        };
+
+        const startExamTimer = () => {
+            stopExamTimer();
+            examStartedAt = Date.now();
+            $("exam-timer").style.display = "";
+            $("exam-timer").textContent = "00:00";
+            examTimerId = setInterval(() => {
+                $("exam-timer").textContent = formatDuration(examElapsedSeconds());
+            }, 1000);
+        };
+
+        const EXAM_KIND_LABELS = {quiz: "QCM", open: "Question ouverte", exercise: "Exercice"};
+
+        const examQuestionInput = (q, index) => {
+            if (q.type === "quiz") {
+                return `<div class="options">` + q.options.map((o, i) =>
+                    `<label class="opt"><input type="checkbox" name="exam-${index}" value="${i}"> ${esc(o)}</label>`
+                ).join("") + `</div>`;
+            }
+            if (q.type === "exercise" && q.format === "mcq") {
+                return `<div class="options">` + q.options.map(o =>
+                    `<label class="opt"><input type="radio" name="exam-${index}" value="${escAttr(String(o))}"> ${esc(String(o))}</label>`
+                ).join("") + `</div>`;
+            }
+            if (q.type === "exercise") {
+                return `<input type="text" id="exam-input-${index}" inputmode="numeric" autocomplete="off" placeholder="Ta réponse (un nombre)…" style="margin:.3rem 0">`;
+            }
+            return `<textarea id="exam-input-${index}" placeholder="Ta réponse de mémoire…"></textarea>`;
+        };
+
+        const renderExam = (questions) => {
+            examQuestions = questions;
+            const blocks = questions.map((q, i) => {
+                const heading = q.type === "exercise" ? esc(q.title) : EXAM_KIND_LABELS[q.type];
+                const statement = q.type === "exercise" ? q.statement : q.question;
+                const source = q.document ? sourceChip(q.document) : "";
+                return `<div class="answer exam-q">` +
+                    `<div class="q-counter">Question ${i + 1} / ${questions.length}` +
+                    `<span class="exam-kind">· ${heading}</span></div>${source}` +
+                    `<div class="card-question">${esc(statement)}</div>` +
+                    examQuestionInput(q, i) + `</div>`;
+            }).join("");
+            $("exam-area").innerHTML = blocks +
+                `<div class="exam-foot"><button id="exam-submit">Terminer et corriger</button>` +
+                `<span class="hint" style="margin:0">Les réponses laissées vides comptent comme fausses.</span></div>`;
+            $("exam-submit").addEventListener("click", submitExam);
+        };
+
+        const collectExamAnswer = (q, index) => {
+            if (q.type === "quiz") {
+                const checked = Array.from(document.querySelectorAll(`input[name="exam-${index}"]:checked`));
+                return {type: "quiz", card_id: q.card_id, selected: checked.map(c => q.options[Number(c.value)])};
+            }
+            if (q.type === "exercise") {
+                const field = $(`exam-input-${index}`);
+                const checked = document.querySelector(`input[name="exam-${index}"]:checked`);
+                return {type: "exercise", kind: q.kind, params: q.params, title: q.title,
+                    answer: field ? field.value.trim() : (checked ? checked.value : "")};
+            }
+            return {type: "open", card_id: q.card_id, answer: $(`exam-input-${index}`).value.trim()};
+        };
+
+        const examResultBody = (result) => {
+            if (result.type === "open") {
+                return `<span class="badge ${badgeClass(result.score)}">${result.score}/5</span>${esc(result.feedback)}` +
+                    `<div class="reference"><b>Réponse attendue :</b><br>${esc(result.reference)}</div>`;
+            }
+            if (result.type === "quiz") {
+                const verdict = result.correct
+                    ? '<span class="badge good">Bonne réponse</span>'
+                    : '<span class="badge bad">Raté</span>';
+                return verdict +
+                    `<div class="reference"><b>Bonne(s) réponse(s) :</b> ${esc((result.answers || []).join(" · "))}</div>` +
+                    (result.explanation ? `<div class="reference"><b>Explication :</b> ${esc(result.explanation)}</div>` : "");
+            }
+            const steps = result.solution.map(s => `<li>${esc(s)}</li>`).join("");
+            const verdict = result.correct
+                ? '<span class="badge good">Correct</span>'
+                : '<span class="badge bad">Incorrect</span>';
+            return verdict +
+                `<div class="reference"><b>Réponse attendue :</b> ${esc(String(result.answer))}</div>` +
+                `<details class="exo-solution"><summary>Solution étape par étape</summary><ol>${steps}</ol></details>`;
+        };
+
+        const renderExamResults = (data, duration) => {
+            $("exam-timer").style.display = "none";
+            const correction = data.results.map((result, i) => {
+                const q = examQuestions[i];
+                const statement = q.type === "exercise" ? q.statement : q.question;
+                return `<div class="answer exam-q"><div class="q-counter">Question ${i + 1}</div>` +
+                    `<div class="card-question">${esc(statement)}</div>${examResultBody(result)}</div>`;
+            }).join("");
+            const toReview = (data.to_review || []).length
+                ? `<div class="reference"><b>À revoir :</b> ${esc(data.to_review.join(" · "))}</div>`
+                : "";
+            $("exam-area").innerHTML =
+                `<div class="answer"><div class="exam-result-head">` +
+                `<div class="exam-score">${data.score}<small> / ${data.max_score}</small></div>` +
+                `<div class="hint" style="margin:0">${data.results.length} question(s) · ${formatDuration(duration)} · ${esc(data.scope)}</div>` +
+                `</div>${toReview}<div class="hint">Réponses enregistrées dans ta répétition espacée.</div></div>` +
+                correction;
+            refreshStats();
+        };
+
+        const submitExam = async () => {
+            const btn = $("exam-submit");
+            btn.disabled = true;
+            const duration = examElapsedSeconds();
+            stopExamTimer();
+            const answers = examQuestions.map(collectExamAnswer);
+            $("exam-area").insertAdjacentHTML("beforeend", '<div class="spinner">Correction de ta copie…</div>');
+            try {
+                const res = await fetch("/api/exam/grade", {
+                    method: "POST", headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({answers, duration_s: duration, ...scopeParams()})
+                });
+                const data = await res.json();
+                if (!res.ok) { flash(data.error, true); btn.disabled = false; return; }
+                renderExamResults(data, duration);
+            } catch (err) { flash("Erreur réseau.", true); btn.disabled = false; }
+        };
+
+        const startExam = async () => {
+            const btn = $("exam-start-btn");
+            btn.disabled = true;
+            stopExamTimer();
+            $("exam-timer").style.display = "none";
+            $("exam-area").innerHTML = '<div class="spinner">Préparation du sujet…</div>';
+            try {
+                const res = await fetch("/api/exam/new", {
+                    method: "POST", headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({count: Number($("exam-count").value), ...scopeParams()})
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    emptyState("exam-area", data.error);
+                    return;
+                }
+                renderExam(data.questions);
+                startExamTimer();
+            } catch (err) { flash("Erreur réseau.", true); $("exam-area").innerHTML = ""; }
+            finally { btn.disabled = false; }
+        };
+
+        $("exam-start-btn").addEventListener("click", startExam);
+
         $("upload-form").addEventListener("submit", async (e) => {
             e.preventDefault();
             const fileInput = $("pdf");
@@ -803,16 +1057,18 @@
                 const res = await fetch("/api/upload", {method: "POST", body});
                 const data = await res.json();
                 if (!res.ok) { flash(data.error, true); return; }
-                refreshDocuments(data.documents, data.subjects, data.document_subjects);
+                refreshDocuments(data.documents, data.subjects, data.document_subjects, data.unindexed);
                 fileInput.value = "";
                 updatePdfFilename();
                 $("subject").value = "";
                 refreshStats();
-                flash(data.message, false);
+                flash(data.message, Boolean(data.warning));
             } catch (err) { flash("Erreur réseau.", true); }
         });
 
         $("doc-links").addEventListener("click", async (e) => {
+            const subjectBtn = e.target.closest(".doc-subject");
+            if (subjectBtn) { editSubject(subjectBtn); return; }
             const btn = e.target.closest(".doc-del");
             if (!btn) return;
             const doc = btn.dataset.doc;
@@ -822,7 +1078,7 @@
                 const data = await res.json();
                 if (!res.ok) { flash(data.error, true); return; }
                 if ($("document").value === "doc:" + doc) $("document").value = "";
-                refreshDocuments(data.documents, data.subjects, data.document_subjects);
+                refreshDocuments(data.documents, data.subjects, data.document_subjects, data.unindexed);
                 refreshStats();
                 if ($("panel-dashboard").classList.contains("active")) loadDashboard();
                 flash(data.message, false);

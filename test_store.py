@@ -184,6 +184,59 @@ def test_record_review_logs_history(db):
     assert today_entry["avg_quality"] == 4.0
 
 
+def test_dashboard_groups_by_topic(db):
+    store.add_cards("a.pdf", [
+        {"question": "Q1", "answer": "A", "topic": "signature RSA"},
+        {"question": "Q2", "answer": "A", "topic": "signature RSA"},
+        {"question": "Q3", "answer": "A"},
+    ], db)
+    by_topic = {row["topic"]: row["total"] for row in store.dashboard(db_path=db)["by_topic"]}
+    assert by_topic == {"signature RSA": 2, store.UNCLASSIFIED_TOPIC: 1}
+
+
+def test_blank_topic_is_stored_as_unclassified(db):
+    store.add_cards("a.pdf", [{"question": "Q", "answer": "A", "topic": "   "}], db)
+    assert store.dashboard(db_path=db)["by_topic"][0]["topic"] == store.UNCLASSIFIED_TOPIC
+
+
+def test_sample_cards_filters_by_kind_and_scope(db):
+    store.add_cards("a.pdf", [{"question": "Ouverte", "answer": "A"}], db)
+    store.add_cards("a.pdf", [{"question": "Qcm", "answer": "A", "options": ["A", "B"]}], db)
+    store.add_cards("b.pdf", [{"question": "Autre doc", "answer": "A"}], db)
+    quiz = store.sample_cards(10, kind="quiz", document="a.pdf", db_path=db)
+    assert [c["question"] for c in quiz] == ["Qcm"]
+    assert quiz[0]["options"] == ["A", "B"]
+    assert [c["question"] for c in store.sample_cards(10, kind="open", document="a.pdf", db_path=db)] == ["Ouverte"]
+
+
+def test_sample_cards_caps_at_requested_count(db):
+    store.add_cards("a.pdf", [{"question": f"Q{i}", "answer": "A"} for i in range(10)], db)
+    assert len(store.sample_cards(3, kind="open", db_path=db)) == 3
+
+
+def test_recent_exams_empty_by_default(db):
+    assert store.recent_exams(db_path=db) == []
+
+
+def test_recent_exams_returns_oldest_first_for_charting(db):
+    store.add_exam(12.5, 10, 300, "crypto", db_path=db)
+    store.add_exam(15.0, 10, 280, "crypto", db_path=db)
+    scores = [e["score"] for e in store.recent_exams(db_path=db)]
+    assert scores == [12.5, 15.0]
+
+
+def test_recent_exams_respects_limit_keeping_latest(db):
+    for index in range(15):
+        store.add_exam(float(index), 5, None, None, db_path=db)
+    history = store.recent_exams(limit=3, db_path=db)
+    assert [e["score"] for e in history] == [12.0, 13.0, 14.0]
+
+
+def test_dashboard_exposes_exam_history(db):
+    store.add_exam(11.0, 10, 240, "crypto", db_path=db)
+    assert store.dashboard(db_path=db)["exams"][0]["score"] == 11.0
+
+
 def test_feynman_history_empty_by_default(db):
     assert store.feynman_history(db_path=db) == []
 

@@ -13,11 +13,13 @@ from sentence_transformers import SentenceTransformer
 from werkzeug.utils import secure_filename
 
 import chatbot
+import exam
 import exercises
 import store
 from rag_engine import RagEngine
 
 MAX_UPLOAD_MB = 50
+MAX_SUBJECT_LENGTH = 60
 PDF_MAGIC = b"%PDF"
 CSV_DELIMITER = ";"
 CSV_BOM = chr(0xFEFF)
@@ -56,8 +58,6 @@ os.makedirs(chatbot.DOCS_DIR, exist_ok=True)
 
 store.init_db()
 store.ensure_skills(exercises.KINDS)
-EXERCISE_CORRECT_GRADE = 5
-EXERCISE_WRONG_GRADE = 1
 _engine = RagEngine(Groq(api_key=_api_key, max_retries=chatbot.GROQ_MAX_RETRIES), _model, reranker=_reranker)
 _engine.rebuild()
 print(f"Index prêt : {len(_engine.documents())} document(s).")
@@ -67,14 +67,16 @@ def _scope(data):
     return data.get("document") or None, data.get("subject") or None
 
 
-def _documents_payload(message=None):
+def _documents_payload(message=None, warning=False):
     payload = {
         "documents": _engine.documents(),
+        "unindexed": _engine.unindexed_documents(),
         "subjects": _engine.subjects(),
         "document_subjects": _engine.document_subjects(),
     }
     if message:
         payload["message"] = message
+        payload["warning"] = warning
     return payload
 
 
@@ -90,6 +92,7 @@ def index():
     return render_template(
         "index.html",
         documents=_engine.documents(),
+        unindexed=_engine.unindexed_documents(),
         subjects=_engine.subjects(),
         document_subjects=_engine.document_subjects(),
     )
@@ -168,14 +171,32 @@ def api_exercise_grade():
     params = data.get("params")
     if not kind or not isinstance(params, dict):
         return jsonify({"error": "Exercice invalide."}), 400
-    result = exercises.grade(kind, params, data.get("answer"))
-    if "error" in result:
-        return jsonify(result), 400
-    grade_value = EXERCISE_CORRECT_GRADE if result["correct"] else EXERCISE_WRONG_GRADE
-    schedule = store.record_skill_review(kind, grade_value)
-    result["next_due_in_days"] = schedule["interval"] if schedule else None
-    result["progress"] = store.skills_progress()
-    return jsonify(result)
+    result = _engine.submit_exercise(kind, params, data.get("answer"))
+    return jsonify(result), (400 if "error" in result else 200)
+
+
+@app.route("/api/exam/new", methods=["POST"])
+def api_exam_new():
+    data = request.get_json(silent=True) or {}
+    document, subject = _scope(data)
+    try:
+        count = int(data.get("count", exam.DEFAULT_QUESTION_COUNT))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Nombre de questions invalide."}), 400
+    result = _engine.new_exam(count, document, subject)
+    return jsonify(result), (400 if "error" in result else 200)
+
+
+@app.route("/api/exam/grade", methods=["POST"])
+def api_exam_grade():
+    data = request.get_json(silent=True) or {}
+    document, subject = _scope(data)
+    answers = data.get("answers")
+    if not isinstance(answers, list) or not answers:
+        return jsonify({"error": "Copie vide."}), 400
+    duration = data.get("duration_s")
+    result = _engine.grade_exam(answers, duration, document, subject)
+    return jsonify(result), (400 if "error" in result else 200)
 
 
 def _sse_event(payload):
@@ -340,7 +361,26 @@ def api_upload():
     file.save(destination)
     store.set_document_subject(filename, request.form.get("subject"))
     _engine.rebuild()
+    if filename in _engine.unindexed_documents():
+        return jsonify(_documents_payload(
+            f"« {filename} » ne contient aucun texte (PDF scanné ou en images) : il est ajouté "
+            f"mais rien n'en sera tiré.", warning=True))
     return jsonify(_documents_payload(f"« {filename} » ajouté et indexé."))
+
+
+@app.route("/api/documents/<name>/subject", methods=["PUT"])
+def api_set_document_subject(name):
+    filename = secure_filename(name)
+    if not filename.lower().endswith(".pdf"):
+        return jsonify({"error": "Nom de document invalide."}), 400
+    if not os.path.isfile(os.path.join(chatbot.DOCS_DIR, filename)):
+        return jsonify({"error": "Document introuvable."}), 404
+    data = request.get_json(silent=True) or {}
+    subject = (data.get("subject") or "").strip()[:MAX_SUBJECT_LENGTH]
+    store.set_document_subject(filename, subject)
+    message = (f"« {filename} » classé dans « {subject} »." if subject
+               else f"Matière retirée de « {filename} ».")
+    return jsonify(_documents_payload(message))
 
 
 @app.route("/api/documents/<name>", methods=["DELETE"])

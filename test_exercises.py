@@ -54,3 +54,13 @@ def test_grade_handles_non_numeric_answer():
 
 def test_grade_unknown_kind_returns_error():
     assert "error" in exercises.grade("nope", {}, 1)
+
+
+def test_kinds_matching_selects_only_covered_exercises():
+    assert exercises.kinds_matching("Qu'est-ce qu'une signature RSA ?") == ["rsa_verify", "rsa_private_exponent"]
+    assert exercises.kinds_matching("Calcul d'une exponentiation modulaire") == ["modexp"]
+
+
+def test_kinds_matching_returns_nothing_for_unrelated_course():
+    assert exercises.kinds_matching("Le protocole TCP garantit l'ordre des segments.") == []
+    assert exercises.kinds_matching("") == []

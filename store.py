@@ -14,6 +14,8 @@ MATURE_INTERVAL_DAYS = 21
 DUE_HORIZON_DAYS = 34
 HISTORY_DAYS = 13
 FEYNMAN_HISTORY_LIMIT = 10
+EXAM_HISTORY_LIMIT = 10
+UNCLASSIFIED_TOPIC = "Non classé"
 _lock = threading.Lock()
 
 
@@ -72,6 +74,8 @@ def init_db(db_path=DB_PATH):
             conn.execute("ALTER TABLE cards ADD COLUMN options TEXT")
         if "explanation" not in columns:
             conn.execute("ALTER TABLE cards ADD COLUMN explanation TEXT")
+        if "topic" not in columns:
+            conn.execute("ALTER TABLE cards ADD COLUMN topic TEXT")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS reviews (
@@ -112,6 +116,18 @@ def init_db(db_path=DB_PATH):
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS exams (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                score REAL NOT NULL,
+                question_count INTEGER NOT NULL,
+                duration_s INTEGER,
+                scope TEXT,
+                taken_at TEXT NOT NULL
+            )
+            """
+        )
 
 
 def add_cards(document, cards, db_path=DB_PATH):
@@ -123,6 +139,7 @@ def add_cards(document, cards, db_path=DB_PATH):
             c["answer"],
             json.dumps(c["options"]) if c.get("options") else None,
             c.get("explanation"),
+            (c.get("topic") or "").strip() or None,
             today,
             today,
         )
@@ -130,8 +147,8 @@ def add_cards(document, cards, db_path=DB_PATH):
     ]
     with _lock, _connect(db_path) as conn:
         conn.executemany(
-            "INSERT INTO cards (document, question, answer, options, explanation, due_date, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO cards (document, question, answer, options, explanation, topic, due_date, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
     return len(rows)
@@ -336,6 +353,43 @@ def skills_progress(today=None, db_path=DB_PATH):
     return {"total": total, "due": due, "learned": learned}
 
 
+def sample_cards(count, kind=None, document=None, subject=None, db_path=DB_PATH):
+    clauses = []
+    params = []
+    scope, scope_params = _scope_filter(document, subject)
+    if scope:
+        clauses.append(scope)
+        params += scope_params
+    kind_clause = _kind_clause(kind)
+    if kind_clause:
+        clauses.append(kind_clause)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    with _lock, _connect(db_path) as conn:
+        rows = conn.execute(
+            f"SELECT * FROM cards{where} ORDER BY RANDOM() LIMIT ?", params + [count]
+        ).fetchall()
+    return [_row_to_card(row) for row in rows]
+
+
+def add_exam(score, question_count, duration_s=None, scope=None, db_path=DB_PATH):
+    taken_at = datetime.now().isoformat(timespec="seconds")
+    with _lock, _connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO exams (score, question_count, duration_s, scope, taken_at) VALUES (?, ?, ?, ?, ?)",
+            (score, question_count, duration_s, scope, taken_at),
+        )
+
+
+def recent_exams(limit=EXAM_HISTORY_LIMIT, db_path=DB_PATH):
+    with _lock, _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT score, question_count, duration_s, scope, taken_at FROM exams "
+            "ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in reversed(rows)]
+
+
 def _maturity_bucket(repetitions, interval):
     if repetitions == 0:
         return "new"
@@ -391,6 +445,16 @@ def dashboard(document=None, today=None, db_path=DB_PATH, subject=None):
                 "success_rate": round(ok / reviewed * 100) if reviewed else None,
             })
 
+        by_topic = [
+            {"topic": row["topic"] or UNCLASSIFIED_TOPIC, "total": row["total"], "learned": row["learned"]}
+            for row in conn.execute(
+                f"SELECT MIN(topic) AS topic, COUNT(*) AS total, "
+                f"SUM(CASE WHEN repetitions >= {LEARNED_REPETITIONS} THEN 1 ELSE 0 END) AS learned "
+                f"FROM cards{card_filter} GROUP BY LOWER(COALESCE(topic, '')) ORDER BY total DESC",
+                card_params,
+            )
+        ]
+
         due_map = {
             row["due_date"]: row["n"]
             for row in conn.execute(
@@ -428,6 +492,8 @@ def dashboard(document=None, today=None, db_path=DB_PATH, subject=None):
     return {
         "maturity": maturity,
         "by_document": by_document,
+        "by_topic": by_topic,
+        "exams": recent_exams(db_path=db_path),
         "overdue": overdue,
         "due_calendar": due_calendar,
         "reviews_history": reviews_history,
