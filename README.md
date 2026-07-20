@@ -25,7 +25,8 @@ Le but n'est pas juste de retrouver une information (un chatbot le fait déjà),
 - **QCM** : questions à choix multiples générées depuis les cours, avec une ou plusieurs bonnes réponses (cases à cocher, correction tout-ou-rien) et une explication systématique (pourquoi la bonne est correcte, pourquoi les autres sont fausses). Bonne réponse, la carte est espacée ; mauvaise, elle revient dès le lendemain (même planning SM-2).
 - **Flashcards** : même jeu de cartes que « Interroge-moi », révisé en autonomie. On révèle la réponse et on s'auto-note (Raté / Difficile / Bien / Facile), sans appel à l'IA. La note alimente le SM-2.
 - **Exercices** : exercices de calcul cryptographique (vérification de signature RSA, exponentiation modulaire, calcul de l'exposant privé), générés avec des nombres aléatoires et **corrigés en Python**, jamais par l'IA. La solution est donc toujours juste, avec le détail étape par étape. Ce mode vise l'applicatif, là où générer depuis les PDF ne donnerait que de la théorie. La répétition espacée s'applique ici par type de compétence : chaque exercice résolu replanifie sa compétence, et « Réviser » propose celle arrivée à échéance.
-- **Tableau de bord** : statistiques de révision (maturité des cartes, activité par jour, répartition par document, heatmap des échéances), filtrables par document. En haut, une bande de recommandation diagnostique le deck (cartes en retard, document le plus faible) et propose un bouton qui lance la révision ciblée. Ce diagnostic se fait par règles simples, sans appel à l'IA.
+- **Examen blanc** : un sujet tiré au hasard — QCM, questions ouvertes, un ou deux exercices de calcul. On répond à tout, chrono affiché, correction et note sur 20 à la fin. Les réponses comptent dans la répétition espacée comme une révision normale, et la note est gardée pour suivre la progression.
+- **Tableau de bord** : statistiques de révision (maturité des cartes, activité par jour, répartition par document et par notion, notes d'examen, heatmap des échéances), filtrables par document. En haut, une bande de recommandation diagnostique le deck (cartes en retard, document le plus faible) et propose un bouton qui lance la révision ciblée. Ce diagnostic se fait par règles simples, sans appel à l'IA.
 
 ## Comment ça marche
 
@@ -61,6 +62,14 @@ python app.py
 ```
 
 L'interface est sur http://127.0.0.1:5000. Au premier démarrage, le modèle d'embeddings (~80 Mo) est téléchargé. Ajoute tes PDF via le bouton « Ajouter un PDF », ou place-les directement dans le dossier `docs/`.
+
+Pour lire tes cours depuis un autre dossier — un dossier Google Drive synchronisé, par exemple — passe son chemin dans `DOCS_DIR` :
+
+```bash
+DOCS_DIR="/chemin/vers/mes-cours" python app.py
+```
+
+Un PDF dont aucun texte n'est extractible (scan, photos de slides) est signalé « non indexé » dans la liste des documents : il est présent mais rien n'en est tiré.
 
 Une version ligne de commande existe aussi :
 
