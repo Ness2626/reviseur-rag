@@ -105,6 +105,26 @@ faite, c'est le point qui vaut le plus en entretien sécu ; mal faite, le plus c
   révision comme une autre.
 - Note finale sur 20, stockée pour affichage dans le dashboard.
 
+**Fait (20 juillet 2026).** `exam.py` (composition + note, sans base ni LLM), `RagEngine.new_exam` /
+`grade_exam`, endpoints `/api/exam/new|grade`, onglet « Examen blanc » avec chrono client.
+Deux écarts assumés par rapport aux décisions ci-dessus, issus d'un audit du mode sur deux
+questions : l'épreuve porte-t-elle bien sur le cours, et la note veut-elle dire quelque chose ?
+- **Les exercices de calcul ne sont plus systématiques.** Les trois générateurs sont tous du RSA :
+  les insérer dans un examen sur un cours de réseau y ajoutait une question hors programme, comptée
+  dans la note. Chaque type déclare maintenant des mots-clés (`exercises.KEYWORDS`) ; un exercice
+  n'entre dans le sujet que si le périmètre le couvre (questions, notions et noms de documents des
+  cartes tirées). Sinon le sujet est 100 % cartes.
+- **Le sujet peut être plus court que demandé** si le stock de cartes du périmètre ne suffit pas —
+  préféré à un remplissage par des exercices hors sujet.
+- Ajout hors décisions : la copie corrigée liste les notions ratées (`to_review`, seuil 0,6), ce que
+  le point 7 rend possible. Feedback ciblé plutôt qu'un simple score.
+
+**Non retenu (constats d'audit).** Le tirage reste purement aléatoire, sans favoriser les cartes
+dues : un examen blanc doit rester représentatif du cours, pas se réduire aux points faibles (c'est
+déjà le rôle des modes de révision). La notation garde le tout-ou-rien sur les QCM multi-réponses,
+par cohérence avec le mode QCM. La correction des questions ouvertes reste séquentielle (un appel
+LLM par question) : ~3 s par question ouverte, acceptable sur un sujet de 10.
+
 ## 6. Export Anki / CSV — 2-3 h
 
 **Décisions prises.** CSV d'abord (`question;réponse;source`, séparateur `;`, UTF-8
