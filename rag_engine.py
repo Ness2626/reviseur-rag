@@ -1,4 +1,5 @@
 import json
+import os
 import random
 import re
 import threading
@@ -7,12 +8,18 @@ import numpy as np
 from rank_bm25 import BM25Okapi
 
 import chatbot
+import exam
+import exercises
 import store
 
 FICHE_BUDGET_CHARS = 16000
 MAX_CARDS = 15
 QUIZ_CORRECT_GRADE = 5
 QUIZ_WRONG_GRADE = 1
+EXERCISE_CORRECT_GRADE = 5
+EXERCISE_WRONG_GRADE = 1
+OPEN_MAX_SCORE = 5
+BLANK_ANSWER_GRADE = 0
 RRF_K = 60
 RERANK_CANDIDATES = 20
 TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
@@ -52,6 +59,12 @@ def _reciprocal_rank_fusion(*rank_lists, k=RRF_K):
     return sorted(scores, key=scores.get, reverse=True)
 
 
+def _scope_text(cards):
+    return " ".join(
+        f"{card['question']} {card.get('topic') or ''} {card['document']}" for card in cards
+    )
+
+
 def _within_budget(chunks, budget=FICHE_BUDGET_CHARS):
     total = sum(len(chunk.text) for chunk in chunks)
     if total <= budget:
@@ -89,6 +102,13 @@ class RagEngine:
 
     def documents(self):
         return list(self._documents)
+
+    def unindexed_documents(self):
+        indexed = set(self._documents)
+        return sorted(
+            name for name in (os.path.basename(path) for path in chatbot.discover_pdfs())
+            if name not in indexed
+        )
 
     def has_index(self):
         return bool(self._chunks)
@@ -284,6 +304,86 @@ class RagEngine:
             "next_due_in_days": schedule["interval"] if schedule else None,
             "progress": store.progress(document, kind="quiz", subject=subject),
         }
+
+    def submit_exercise(self, kind, params, given):
+        result = exercises.grade(kind, params, given)
+        if "error" in result:
+            return result
+        grade = EXERCISE_CORRECT_GRADE if result["correct"] else EXERCISE_WRONG_GRADE
+        schedule = store.record_skill_review(kind, grade)
+        result["next_due_in_days"] = schedule["interval"] if schedule else None
+        result["progress"] = store.skills_progress()
+        return result
+
+    def new_exam(self, count=exam.DEFAULT_QUESTION_COUNT, document=None, subject=None):
+        quiz_pool = store.sample_cards(count, kind="quiz", document=document, subject=subject)
+        open_pool = store.sample_cards(count, kind="open", document=document, subject=subject)
+        if not quiz_pool and not open_pool:
+            return {"error": "Aucune carte pour ce périmètre. Génère d'abord des questions ou un QCM."}
+        kinds = exercises.kinds_matching(_scope_text(quiz_pool + open_pool))
+        counts = exam.plan(count, len(quiz_pool), len(open_pool), bool(kinds))
+        drawn = [exercises.new_exercise(random.choice(kinds)) for _ in range(counts["exercise"])]
+        questions = exam.build(quiz_pool[:counts["quiz"]], open_pool[:counts["open"]], drawn)
+        return {"questions": questions, "scope": subject or document or "l'ensemble du corpus"}
+
+    @staticmethod
+    def _card_label(card):
+        return card["topic"] or card["document"]
+
+    def _grade_open(self, answer, document, subject):
+        card_id = answer.get("card_id")
+        card = store.get_card(card_id)
+        if not card:
+            return None
+        given = (answer.get("answer") or "").strip()
+        if not given:
+            store.record_review(card_id, BLANK_ANSWER_GRADE)
+            return {"type": "open", "ratio": 0.0, "score": 0, "label": self._card_label(card),
+                    "feedback": "Aucune réponse donnée.", "reference": card["answer"]}
+        result = self.submit_answer(card_id, given, document, subject)
+        if "error" in result:
+            return None
+        return {"type": "open", "ratio": result["score"] / OPEN_MAX_SCORE,
+                "score": result["score"], "feedback": result["feedback"],
+                "reference": result["reference"], "label": self._card_label(card)}
+
+    def _grade_quiz(self, answer, document, subject):
+        card = store.get_card(answer.get("card_id"))
+        if not card:
+            return None
+        result = self.submit_quiz(answer.get("card_id"), answer.get("selected") or [], document, subject)
+        if "error" in result:
+            return None
+        return {"type": "quiz", "ratio": 1.0 if result["correct"] else 0.0,
+                "correct": result["correct"], "answers": result["answers"],
+                "explanation": result["explanation"], "label": self._card_label(card)}
+
+    def _grade_exercise(self, answer):
+        result = self.submit_exercise(answer.get("kind"), answer.get("params") or {}, answer.get("answer"))
+        if "error" in result:
+            return None
+        return {"type": "exercise", "ratio": 1.0 if result["correct"] else 0.0,
+                "correct": result["correct"], "answer": result["answer"],
+                "solution": result["solution"], "label": answer.get("title")}
+
+    def _grade_exam_answer(self, answer, document, subject):
+        if answer.get("type") == "quiz":
+            return self._grade_quiz(answer, document, subject)
+        if answer.get("type") == "exercise":
+            return self._grade_exercise(answer)
+        return self._grade_open(answer, document, subject)
+
+    def grade_exam(self, answers, duration_s=None, document=None, subject=None):
+        if not answers:
+            return {"error": "Copie vide."}
+        results = [self._grade_exam_answer(answer, document, subject) for answer in answers]
+        if any(result is None for result in results):
+            return {"error": "Copie invalide : une question ne correspond à aucune carte."}
+        scope = subject or document or "l'ensemble du corpus"
+        score = exam.final_score([result["ratio"] for result in results])
+        store.add_exam(score, len(results), duration_s, scope)
+        return {"score": score, "max_score": exam.MAX_SCORE, "results": results, "scope": scope,
+                "to_review": exam.weak_labels(results)}
 
     @staticmethod
     def _decode_correct(answer):

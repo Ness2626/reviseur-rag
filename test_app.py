@@ -5,6 +5,7 @@ import uuid
 import pytest
 from pypdf import PdfWriter
 
+import chatbot
 import store
 
 
@@ -18,10 +19,17 @@ def blank_pdf_bytes():
 
 
 @pytest.fixture(scope="module")
-def app_module(tmp_path_factory):
+def monkeypatch_module():
+    with pytest.MonkeyPatch.context() as patcher:
+        yield patcher
+
+
+@pytest.fixture(scope="module")
+def app_module(tmp_path_factory, monkeypatch_module):
     workdir = tmp_path_factory.mktemp("appwork")
     previous_dir = os.getcwd()
     os.chdir(workdir)
+    monkeypatch_module.setattr(chatbot, "DOCS_DIR", str(workdir / "docs"))
     import app
     app.app.config["TESTING"] = True
     yield app
@@ -154,6 +162,92 @@ def test_quiz_answer_requires_selection(client):
 def test_exercise_grade_rejects_malformed_payload(client):
     response = client.post("/api/exercise/grade", json={"kind": None, "params": "pas un dict"})
     assert response.status_code == 400
+
+
+def test_exam_new_without_cards_returns_error(client):
+    response = client.post("/api/exam/new", json={"document": "vide.pdf"})
+    assert response.status_code == 400
+    assert "error" in response.get_json()
+
+
+def test_exam_new_returns_questions(client):
+    store.add_cards("exam.pdf", [{"question": f"Q{i}", "answer": "A"} for i in range(8)])
+    response = client.post("/api/exam/new", json={"document": "exam.pdf", "count": 5})
+    assert response.status_code == 200
+    questions = response.get_json()["questions"]
+    assert len(questions) == 5
+    assert all("type" in question for question in questions)
+
+
+def test_exam_new_rejects_invalid_count(client):
+    response = client.post("/api/exam/new", json={"count": "beaucoup"})
+    assert response.status_code == 400
+
+
+def test_exam_grade_rejects_empty_copy(client):
+    assert client.post("/api/exam/grade", json={"answers": []}).status_code == 400
+    assert client.post("/api/exam/grade", json={}).status_code == 400
+
+
+def test_exam_grade_returns_score_out_of_twenty(client):
+    store.add_cards("exam.pdf", [{"question": "Qcm", "answer": '["a"]', "options": ["a", "b"]}])
+    card = store.next_due_card("exam.pdf", kind="quiz")
+    response = client.post("/api/exam/grade", json={
+        "answers": [{"type": "quiz", "card_id": card["id"], "selected": ["a"]}],
+        "duration_s": 90,
+    })
+    assert response.status_code == 200
+    assert response.get_json()["score"] == 20.0
+
+
+def test_upload_of_textless_pdf_warns_and_lists_it_as_unindexed(client):
+    response = client.post("/api/upload", data={"pdf": (io.BytesIO(blank_pdf_bytes()), "scanne.pdf")})
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["warning"] is True
+    assert "aucun texte" in payload["message"]
+    assert "scanne.pdf" in payload["unindexed"]
+    assert "scanne.pdf" not in payload["documents"]
+
+
+def test_documents_endpoint_separates_indexed_from_unindexed(client):
+    client.post("/api/upload", data={"pdf": (io.BytesIO(blank_pdf_bytes()), "muet.pdf")})
+    payload = client.get("/api/documents").get_json()
+    assert "muet.pdf" in payload["unindexed"]
+    assert not set(payload["unindexed"]) & set(payload["documents"])
+
+
+def test_set_subject_updates_indexed_document(client):
+    client.post("/api/upload", data={"pdf": (io.BytesIO(blank_pdf_bytes()), "classe.pdf")})
+    response = client.put("/api/documents/classe.pdf/subject", json={"subject": "  crypto  "})
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["document_subjects"]["classe.pdf"] == "crypto"
+    assert "crypto" in payload["subjects"]
+
+
+def test_set_subject_empty_value_clears_it(client):
+    client.post("/api/upload", data={"pdf": (io.BytesIO(blank_pdf_bytes()), "declasse.pdf")})
+    client.put("/api/documents/declasse.pdf/subject", json={"subject": "reseaux"})
+    payload = client.put("/api/documents/declasse.pdf/subject", json={"subject": ""}).get_json()
+    assert payload["document_subjects"]["declasse.pdf"] is None
+    assert "reseaux" not in payload["subjects"]
+
+
+def test_set_subject_on_unknown_document_returns_404(client):
+    response = client.put("/api/documents/fantome.pdf/subject", json={"subject": "crypto"})
+    assert response.status_code == 404
+
+
+def test_set_subject_rejects_non_pdf_name(client):
+    response = client.put("/api/documents/app.py/subject", json={"subject": "crypto"})
+    assert response.status_code == 400
+
+
+def test_set_subject_truncates_overlong_value(client):
+    client.post("/api/upload", data={"pdf": (io.BytesIO(blank_pdf_bytes()), "longue.pdf")})
+    payload = client.put("/api/documents/longue.pdf/subject", json={"subject": "x" * 200}).get_json()
+    assert len(payload["document_subjects"]["longue.pdf"]) == 60
 
 
 def test_serve_indexed_pdf_returns_pdf(client):

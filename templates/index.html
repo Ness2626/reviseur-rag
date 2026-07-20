@@ -284,6 +284,15 @@
         .exo-solution ol { margin: .6rem 0 0; padding-left: 1.3rem; font-size: .9rem; }
         .exo-solution li { margin: .35rem 0; }
 
+        .exam-timer { font-variant-numeric: tabular-nums; margin-bottom: 0; }
+        .exam-q { margin-bottom: 1rem; }
+        .exam-q .q-counter { display: flex; align-items: center; gap: .5rem; }
+        .exam-kind { font-weight: 600; color: var(--accent-dark); }
+        .exam-foot { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }
+        .exam-score { font-size: 2rem; font-weight: 700; letter-spacing: -.02em; }
+        .exam-score small { font-size: 1rem; font-weight: 500; color: var(--muted); }
+        .exam-result-head { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+
         .empty {
             display: flex; flex-direction: column; align-items: center; text-align: center;
             gap: .9rem; padding: 2.5rem 1rem; color: var(--muted);
@@ -317,10 +326,24 @@
 
         .dash-toolbar { display: flex; justify-content: flex-end; margin-bottom: .8rem; }
         .doc-links { list-style: none; margin: .5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .25rem; }
-        .doc-links li { display: flex; align-items: center; gap: .3rem; }
+        .doc-links li { display: flex; flex-direction: column; align-items: stretch; gap: .05rem; }
+        .doc-row { display: flex; align-items: center; gap: .3rem; }
         .doc-links a { flex: 1; min-width: 0; color: var(--muted); font-size: .82rem; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .doc-links a:hover { color: var(--accent); text-decoration: underline; }
-        .doc-subject { color: var(--accent); font-size: .78rem; }
+        .doc-subject {
+            align-self: flex-start; width: auto; max-width: 100%; text-align: left;
+            background: none; border: 0;
+            padding: 0 0 0 .05rem; font-size: .74rem; font-weight: 500; color: var(--accent);
+            cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .doc-subject:hover { background: none; text-decoration: underline; }
+        .doc-subject.unset { color: var(--muted); opacity: .75; }
+        .doc-subject-input { width: 100%; padding: .2rem .4rem; font-size: .75rem; border-radius: 7px; }
+        .doc-dead a { opacity: .55; }
+        .doc-warn {
+            display: block; font-size: .72rem; color: var(--bad); cursor: help;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: .05rem;
+        }
         .doc-links .doc-del { flex: none; width: auto; background: none; border: none; color: var(--muted); cursor: pointer; font-size: .8rem; line-height: 1; padding: .1rem .35rem; border-radius: 4px; }
         .doc-links .doc-del:hover { color: #dc2626; background: rgba(220, 38, 38, .12); }
         .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
@@ -366,7 +389,7 @@
         .file-input-native { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; padding: 0; }
     </style>
 </head>
-<body data-documents='{{ documents | tojson }}'>
+<body data-documents='{{ documents | tojson }}' data-subjects='{{ subjects | tojson }}' data-document-subjects='{{ document_subjects | tojson }}' data-unindexed='{{ unindexed | tojson }}'>
     <div class="toast-container" id="toasts"></div>
 
     <div class="app">
@@ -389,6 +412,7 @@
             <button class="tab" data-mode="flashcards"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg><span>Flashcards</span></button>
             <button class="tab" data-mode="feynman"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14s-1.5-2-4-2-4 2-4 2"/><path d="M20 14s-1.5-2-4-2"/><circle cx="9" cy="7" r="3"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M9 14v7M9 18h6"/></svg><span>Feynman</span></button>
             <button class="tab" data-mode="exercises"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="13" y2="12"/><path d="M15.5 14.5l1.5 1.5 3-3"/></svg><span>Exercices</span></button>
+            <button class="tab" data-mode="exam"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5"/><path d="M9 2h6"/></svg><span>Examen blanc</span></button>
             <button class="tab" data-mode="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span>Tableau de bord</span></button>
         </nav>
 
@@ -407,7 +431,8 @@
                     </optgroup>
                 </select>
                 <ul class="doc-links" id="doc-links">
-                    {% for doc in documents %}<li><a href="/docs/{{ doc | urlencode }}" target="_blank" rel="noopener">{{ doc }}{% if document_subjects.get(doc) %} <span class="doc-subject">· {{ document_subjects[doc] }}</span>{% endif %}</a><button class="doc-del" data-doc="{{ doc }}" title="Supprimer" aria-label="Supprimer">✕</button></li>{% endfor %}
+                    {% for doc in documents %}<li><div class="doc-row"><a href="/docs/{{ doc | urlencode }}" target="_blank" rel="noopener">{{ doc }}</a><button class="doc-del" data-doc="{{ doc }}" title="Supprimer" aria-label="Supprimer">✕</button></div><button class="doc-subject{% if not document_subjects.get(doc) %} unset{% endif %}" data-doc="{{ doc }}" data-subject="{{ document_subjects.get(doc) or '' }}" title="Modifier la matière">{{ document_subjects.get(doc) or '+ matière' }}</button></li>{% endfor %}
+                    {% for doc in unindexed %}<li class="doc-dead"><div class="doc-row"><a href="/docs/{{ doc | urlencode }}" target="_blank" rel="noopener">{{ doc }}</a><button class="doc-del" data-doc="{{ doc }}" title="Supprimer" aria-label="Supprimer">✕</button></div><span class="doc-warn" title="Aucun texte extractible : PDF scanné ou composé d'images. Rien n'en est indexé.">non indexé — aucun texte</span></li>{% endfor %}
                 </ul>
             </div>
 
@@ -499,6 +524,21 @@
             <div id="exo-area"></div>
         </div>
 
+        <div class="panel" id="panel-exam">
+            <div class="recall-actions">
+                <label class="field" for="exam-count">Questions</label>
+                <select id="exam-count">
+                    <option value="5">5</option>
+                    <option value="10" selected>10</option>
+                    <option value="15">15</option>
+                </select>
+                <button id="exam-start-btn">Démarrer l'examen</button>
+                <div class="progress exam-timer" id="exam-timer" style="display:none">00:00</div>
+            </div>
+            <div class="hint">Un sujet au hasard dans le périmètre choisi : QCM, questions ouvertes, et des exercices de calcul quand le cours s'y prête. Note sur 20 à la fin. Les réponses comptent dans la répétition espacée.</div>
+            <div id="exam-area"></div>
+        </div>
+
         <div class="panel" id="panel-dashboard">
             <div id="dash-empty" class="empty" style="display:none"></div>
             <div id="dash-insight" class="insight" style="display:none"></div>
@@ -520,6 +560,16 @@
                     <h3>Cartes par document</h3>
                     <div class="hint">Total par cours, dont la part déjà maîtrisée.</div>
                     <div class="chart-box"><canvas id="chart-docs"></canvas></div>
+                </div>
+                <div class="dash-card dash-wide" id="dash-topic-card">
+                    <h3>Cartes par notion</h3>
+                    <div class="hint">Total par notion, dont la part déjà maîtrisée.</div>
+                    <div class="chart-box"><canvas id="chart-topics"></canvas></div>
+                </div>
+                <div class="dash-card dash-wide" id="dash-exam-card">
+                    <h3>Notes d'examen blanc</h3>
+                    <div class="hint">Note sur 20 des 10 derniers examens.</div>
+                    <div class="chart-box"><canvas id="chart-exams"></canvas></div>
                 </div>
                 <div class="dash-card dash-wide">
                     <h3>Échéances à venir</h3>

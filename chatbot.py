@@ -14,7 +14,8 @@ from groq import Groq
 from pypdf import PdfReader
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
-DOCS_DIR = "docs"
+load_dotenv()
+DOCS_DIR = os.getenv("DOCS_DIR", "docs")
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 RERANKER_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 GROQ_MODEL = "openai/gpt-oss-120b"
@@ -23,6 +24,11 @@ CHUNK_SIZE = 800
 CHUNK_OVERLAP = 150
 CHUNKER_VERSION = 2
 TOP_K = 4
+TOPIC_INSTRUCTION = (
+    "Le champ topic nomme la notion testée en 1 à 3 mots, tels qu'ils apparaissent dans le cours "
+    "(par exemple « signature RSA », « handshake TLS »). Regroupe sous le même topic les questions "
+    "qui portent sur la même notion."
+)
 CACHE_PATH = "index_cache"
 CACHE_KEY_PATH = ".cache_key"
 CACHE_KEY_SIZE_BYTES = 32
@@ -38,7 +44,8 @@ class Chunk:
         return f"{self.source} p.{self.page}"
 
 
-def discover_pdfs(docs_dir=DOCS_DIR):
+def discover_pdfs(docs_dir=None):
+    docs_dir = docs_dir or DOCS_DIR
     if os.path.isdir(docs_dir):
         paths = sorted(glob(os.path.join(docs_dir, "*.pdf")))
         if paths:
@@ -356,8 +363,9 @@ def generate_cards(client, chunks, count, scope_label):
         f"« {scope_label} ». Chaque question doit tester la compréhension d'une notion précise et "
         "appeler une réponse courte. Reste strictement fidèle au contenu, n'invente rien.\n"
         'Réponds UNIQUEMENT avec un objet JSON de la forme : '
-        '{"cards": [{"question": "...", "answer": "..."}]}.\n\n'
-        f"Contexte :\n{context}"
+        '{"cards": [{"question": "...", "answer": "...", "topic": "..."}]}.\n'
+        + TOPIC_INSTRUCTION +
+        f"\n\nContexte :\n{context}"
     )
     response = client.chat.completions.create(
         model=GROQ_MODEL,
@@ -370,7 +378,10 @@ def generate_cards(client, chunks, count, scope_label):
     )
     data = json.loads(response.choices[0].message.content)
     cards = data.get("cards", [])
-    return [c for c in cards if c.get("question") and c.get("answer")]
+    return [
+        {"question": c["question"], "answer": c["answer"], "topic": c.get("topic")}
+        for c in cards if c.get("question") and c.get("answer")
+    ]
 
 
 def generate_quiz(client, chunks, count, scope_label):
@@ -381,8 +392,10 @@ def generate_quiz(client, chunks, count, scope_label):
         "correctes (au moins une). Les distracteurs doivent être plausibles mais faux. Reste "
         "strictement fidèle au contenu, n'invente rien.\n"
         'Réponds UNIQUEMENT avec un objet JSON de la forme : '
-        '{"cards": [{"question": "...", "options": ["...", "...", "...", "..."], "correct": ["...", "..."], "explanation": "..."}]}. '
+        '{"cards": [{"question": "...", "options": ["...", "...", "...", "..."], "correct": ["...", "..."], '
+        '"explanation": "...", "topic": "..."}]}. '
         "Le champ correct est la liste des propositions exactes (au caractère près) qui sont vraies. "
+        + TOPIC_INSTRUCTION + " "
         "Le champ explanation (2 à 3 phrases max) explique la réponse comme le ferait un bon prof, "
         "en variant l'angle d'une question à l'autre : tantôt développer pourquoi la bonne réponse "
         "est vraie, tantôt illustrer par un exemple concret du cours, tantôt démonter seulement le "
@@ -414,6 +427,7 @@ def generate_quiz(client, chunks, count, scope_label):
             "answer": json.dumps(correct, ensure_ascii=False),
             "options": options,
             "explanation": card.get("explanation"),
+            "topic": card.get("topic"),
         })
     return cards
 

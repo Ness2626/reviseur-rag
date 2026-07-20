@@ -11,6 +11,11 @@ import random
 SMALL_PRIMES = [5, 7, 11, 13, 17, 19, 23, 29, 31]
 CANDIDATE_EXPONENTS = [3, 5, 7, 11, 13, 17]
 KINDS = ["rsa_verify", "modexp", "rsa_private_exponent"]
+KEYWORDS = {
+    "rsa_verify": ("rsa", "signature"),
+    "modexp": ("modulaire", "exponentiation", "congruence", "modulo"),
+    "rsa_private_exponent": ("rsa", "euclide", "inverse", "phi"),
+}
 
 
 def _egcd(a, b):
@@ -156,6 +161,11 @@ _SOLVERS = {
     "modexp": _solve_modexp,
     "rsa_private_exponent": _solve_rsa_private_exponent,
 }
+
+
+def kinds_matching(text):
+    lowered = (text or "").lower()
+    return [kind for kind in KINDS if any(word in lowered for word in KEYWORDS[kind])]
 
 
 def new_exercise(kind=None):
