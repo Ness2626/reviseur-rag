@@ -78,10 +78,18 @@ d'externe. Si jamais une XSS passait malgré DOMPurify et l'échappement, elle s
 bloquée à cette dernière étape. Ça m'a demandé de sortir tout le JS de la page vers
 un fichier séparé. Testé au navigateur : un script injecté est bien refusé.
 
+Trois routes touchent aux fichiers : `/docs/<nom>` ouvre un PDF indexé,
+`DELETE /api/documents/<nom>` le supprime, `PUT /api/documents/<nom>/subject` change sa
+matière. Toutes passent le nom par `secure_filename`, exigent l'extension `.pdf` et
+refusent ce qui n'est pas dans `docs/`. La lecture passe par `send_from_directory`, qui
+neutralise le path traversal — testé : `/docs/../app.py` renvoie 404.
+
 - **Pas d'authentification** : l'appli n'écoute qu'en local. Si elle est lancée en
   Docker, ne pas exposer le port au-delà de la machine.
 - **Les cours partent chez un tiers** : chaque question envoie des extraits des PDF à
-  l'API Groq. Ne pas indexer de documents confidentiels.
+  l'API Groq. Convertir un cours scanné avec `ocr.py` envoie en plus l'image des pages
+  entières, annotations manuscrites comprises — une seule fois, au moment de la
+  conversion. Ne pas indexer de documents confidentiels.
 - **Pas de chiffrement du disque** : le contenu (extraits de cours, stats de révision)
   ne le justifie pas ; la seule vraie donnée sensible est la clé d'API, dans `.env`.
 - **Pas de limite de requêtes** : sans exposition réseau, le seul consommateur du quota,
