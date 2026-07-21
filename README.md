@@ -71,6 +71,18 @@ DOCS_DIR="/chemin/vers/mes-cours" python app.py
 
 Un PDF dont aucun texte n'est extractible (scan, photos de slides) est signalé « non indexé » dans la liste des documents : il est présent mais rien n'en est tiré.
 
+### Cours scannés
+
+Un cours photographié ne contient que des images. `ocr.py` le rend lisible par le RAG :
+
+```bash
+python ocr.py mon-cours-scanne.pdf
+```
+
+Chaque page est transcrite par un modèle de vision, mais le scan d'origine est conservé : la transcription est posée par-dessus en couche invisible. Une citation ouvre donc la vraie page, vérifiable à l'œil — un texte reconstitué par une IA ne peut pas servir de source de vérité.
+
+~15 s par page. La transcription est sauvegardée au fil de l'eau : relancer le script reprend où il s'était arrêté.
+
 Une version ligne de commande existe aussi :
 
 ```bash
