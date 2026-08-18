@@ -4,6 +4,8 @@ Un assistant de révision qui lit des cours en PDF et interroge dessus. Trois us
 
 Le but n'est pas juste de retrouver une information (un chatbot le fait déjà), mais de la mémoriser : les questions sont générées depuis les documents fournis, les réponses libres sont corrigées par l'IA, et la révision suit un planning type Anki.
 
+> 🔒 **Sécurité** — revue de sécurité en 8 points, toutes corrigées ; modèle de menace et limites documentés dans **[SECURITY.md](SECURITY.md)**.
+
 ## Aperçu
 
 | Q&A sourcé | QCM corrigé | Tableau de bord |
@@ -33,7 +35,7 @@ Le but n'est pas juste de retrouver une information (un chatbot le fait déjà),
 Le pipeline RAG (Retrieval-Augmented Generation) :
 
 1. **Découpage** : chaque PDF est lu avec `pypdf`. Quand des titres de section numérotés sont détectés (ex. `3. EUF-CMA — la sécurité d'une signature`), le texte est découpé par section et chaque passage est préfixé par son titre, qui devient un repère de contexte à la fois pour la recherche et pour la réponse. À défaut de titres (slides, PDF sans structure), on retombe sur un découpage par passages d'environ 800 mots avec 150 mots de recouvrement.
-2. **Indexation** : chaque passage est encodé en vecteur avec le modèle `all-MiniLM-L6-v2` (sentence-transformers). L'index est mis en cache sur disque (`index_cache.json` + `index_cache.npz`, authentifiés par une signature HMAC), donc seuls les fichiers modifiés sont réencodés.
+2. **Indexation** : chaque passage est encodé en vecteur avec le modèle `all-MiniLM-L6-v2` (sentence-transformers). L'index est mis en cache sur disque en formats non exécutables (`index_cache.json` + `index_cache.npz` chargé avec `allow_pickle=False`), authentifiés par une signature HMAC-SHA256 : si elle ne correspond pas, le cache est rejeté et reconstruit depuis les PDF. Seuls les fichiers modifiés sont réencodés.
 3. **Recherche** : la question est comparée aux passages par deux voies (similarité cosinus sur les vecteurs, et BM25 sur les mots exacts), fusionnées par Reciprocal Rank Fusion. Les 20 meilleurs candidats sont ensuite relus un par un par un cross-encoder (`mmarco-mMiniLMv2-L12-H384-v1`), qui départage plus finement que la comparaison de vecteurs ; les 4 meilleurs forment le contexte.
 4. **Génération** : les passages sont numérotés puis envoyés à un modèle Groq (`openai/gpt-oss-120b`) qui rédige la réponse en français en citant chaque affirmation par son numéro [n]. Le texte est streamé au fil de sa génération (SSE) plutôt qu'attendu en bloc. Une fois la réponse complète, le serveur ne garde comme sources que les numéros réellement cités (avec repli sur tous les passages récupérés si le modèle n'en cite aucun), et l'interface rend chaque marqueur cliquable vers le passage exact.
 
@@ -112,7 +114,9 @@ docker run -p 5000:5000 -e GROQ_API_KEY=ta_cle_ici \
 pytest
 ```
 
-Les tests couvrent l'algorithme SM-2 (calcul des intervalles, réinitialisation après un échec, plancher du facteur de facilité, validation des notes), la persistance SQLite (cartes, planning, compétences) et les solveurs d'exercices (réponses recalculées et vérifiées).
+165 tests couvrent l'ensemble du projet : l'algorithme SM-2 (calcul des intervalles, réinitialisation après un échec, plancher du facteur de facilité, validation des notes), le moteur RAG (recherche, fusion des scores, sélection et citation des sources), les endpoints Flask (upload, gestion des documents, révision, examen), la lecture des PDF et le cache d'index signé, l'examen blanc, la persistance SQLite (cartes, planning, compétences) et les solveurs d'exercices (réponses recalculées et vérifiées).
+
+Une GitHub Action lance aussi `pip-audit` chaque lundi (et à chaque modification de `requirements.txt`) : le job échoue si une dépendance a une vulnérabilité connue. Les versions sont toutes figées dans `requirements.txt`.
 
 ## Structure
 
