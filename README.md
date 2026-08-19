@@ -1,6 +1,6 @@
 # Réviseur RAG
 
-Un assistant de révision qui lit des cours en PDF et interroge dessus. Trois usages principaux : poser une question et obtenir une réponse sourcée, générer une fiche de synthèse, ou se faire interroger en répétition espacée (le système pose les questions, corrige les réponses et reprogramme chaque carte selon ce qu'on retient).
+Un assistant de révision qui lit des cours en PDF et interroge dessus. Trois grandes familles d'usage, déclinées en plusieurs modes ci-dessous : poser une question et obtenir une réponse sourcée, générer une fiche de synthèse, ou se faire interroger en répétition espacée (le système pose les questions, corrige les réponses et reprogramme chaque carte selon ce qu'on retient).
 
 Le but n'est pas juste de retrouver une information (un chatbot le fait déjà), mais de la mémoriser : les questions sont générées depuis les documents fournis, les réponses libres sont corrigées par l'IA, et la révision suit un planning type Anki.
 
@@ -123,14 +123,17 @@ Une GitHub Action lance aussi `pip-audit` chaque lundi (et à chaque modificatio
 - `app.py` : serveur Flask, endpoints JSON
 - `rag_engine.py` : moteur RAG (index, recherche, orchestration des modes de révision)
 - `chatbot.py` : lecture PDF, embeddings, appels au modèle, et version ligne de commande
+- `ocr.py` : transcription des cours scannés (couche de texte invisible posée sur le PDF d'origine)
 - `scheduler.py` : algorithme de répétition espacée SM-2 (fonction pure, testée)
 - `exercises.py` : générateurs d'exercices de calcul crypto à solution vérifiée (déterministe, sans LLM)
+- `exam.py` : examen blanc (tirage QCM + questions ouvertes + exercices, note sur 20)
 - `store.py` : persistance SQLite des cartes et de leur planning
 - `templates/index.html` : interface web
+- `static/` : JS de l'appli et bibliothèques servies en local (vendorisées, sans CDN)
 
 ## Limites connues
 
-- La recherche se fait en mémoire avec numpy : suffisant pour quelques documents, mais à remplacer par un index vectoriel dédié (FAISS) si le corpus grossit.
+- L'index vectoriel tient entièrement en mémoire (numpy) : suffisant pour quelques documents, mais à remplacer par un index dédié (FAISS) si le corpus grossit.
 - Pas d'authentification ni de comptes : le projet est pensé pour un usage local.
 
 ## Licence
