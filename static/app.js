@@ -837,7 +837,7 @@
             let input;
             if (exo.format === "mcq") {
                 input = `<div class="options">` + exo.options.map(o =>
-                    `<label class="opt"><input type="radio" name="exo-opt" value="${o}"> ${esc(String(o))}</label>`
+                    `<label class="opt"><input type="radio" name="exo-opt" value="${escAttr(String(o))}"> ${esc(String(o))}</label>`
                 ).join("") + `</div>`;
             } else {
                 input = `<input type="text" id="exo-input" inputmode="numeric" autocomplete="off" placeholder="Ta réponse (un nombre)…" style="margin:.3rem 0 .8rem">`;
