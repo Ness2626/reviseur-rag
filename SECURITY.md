@@ -1,4 +1,4 @@
-# Sécurité — Réviseur RAG
+# Sécurité du Réviseur RAG
 
 Ce que j'ai vérifié et corrigé côté sécurité (revue en juillet 2026, 8 points, tous
 corrigés), et ce que je ne protège volontairement pas.
@@ -40,35 +40,35 @@ au nom du document, un renommage silencieux aurait coupé la progression en deux
 **4 — Dépendances non figées.** Mon `requirements.txt` ne fixait aucune version :
 chaque installation récupérait les dernières versions publiées, sans contrôle. J'ai
 tout épinglé à des versions précises et je passe `pip-audit` pour repérer les
-vulnérabilités connues — le premier audit a d'ailleurs trouvé une vraie faille dans la
+vulnérabilités connues. Le premier audit a d'ailleurs trouvé une vraie faille dans la
 bibliothèque qui lit les PDF, corrigée en changeant de version. Une GitHub Action
 relance l'audit chaque lundi (et à chaque modification des dépendances) : le job échoue
 si une faille apparaît, ça me suffit comme alerte.
 
-**5 — Bibliothèques JS non vérifiées.** Mes libs (marked, Chart.js) arrivaient d'un CDN
-sans version fixe ni vérification : si le CDN ou le paquet était compromis, le code
-injecté s'exécutait chez moi — et pouvait même désactiver DOMPurify, donc annuler ma
-correction du point 2. J'ai d'abord épinglé chaque lib à une version exacte avec une
-empreinte SRI (le navigateur refuse le fichier si son hash ne correspond plus), puis je
-suis allée au bout de la logique : les trois libs sont maintenant servies en copie
-locale (`static/vendor/`, fichiers vérifiés par leur empreinte avant d'être copiés).
-Plus aucun CDN dans la boucle, et l'appli fonctionne hors ligne.
+**5 — Bibliothèques JS non vérifiées.** Mes librairies JavaScript venaient d'un CDN, des
+serveurs tiers. Mon navigateur exécutait donc du code que je n'avais pas vérifié : si le
+CDN était corrompu, le code injecté pouvait désactiver DOMPurify et annuler le point 2.
+J'ai d'abord ajouté une empreinte SRI en SHA-384, que je calcule une fois et que le
+navigateur recalcule à chaque chargement pour comparer. Puis j'ai copié les trois
+librairies en local dans `static/vendor/` : plus aucun CDN, et l'appli fonctionne hors
+ligne.
 
 **6 — Serveur de dev en Docker.** Le conteneur lançait le serveur de développement de
-Flask, mono-thread et pas fait pour tourner en continu. Je l'ai remplacé par gunicorn,
-avec un seul worker parce que mon index et le modèle d'embeddings vivent en mémoire —
-plusieurs workers en auraient chacun une copie divergente. En local, je garde le
-lancement Flask classique pour développer.
+Flask, qui est mono-thread. Il ne traitait qu'une chose à la fois, donc l'interface se
+figeait pendant chaque appel au LLM. Je suis passée à gunicorn : 4 fils d'exécution pour
+la réactivité, mais un seul worker. Chaque worker aurait sa propre copie de l'index en
+mémoire, et un document ajouté sur l'un manquerait sur l'autre. En local, je garde le
+lancement Flask classique.
 
 **7 — Docker en root.** Rien ne changeait d'utilisateur dans le conteneur, donc tout
-tournait en administrateur : la moindre compromission (le point 1 par exemple, via un
-volume monté) avait les pleins pouvoirs. J'ai créé un utilisateur dédié sans privilèges
-et le processus tourne dessus.
+tournait en administrateur : plus aucun « permission refusée » nulle part. Et le
+conteneur partage `docs/` et `revision.db` avec ma machine, donc du code hostile
+pouvait écrire dans mes vrais fichiers. J'ai créé un utilisateur dédié sans privilèges.
 
 **8 — MD5.** Je m'en servais uniquement pour détecter qu'un PDF a changé et invalider
-le cache — pas exploitable : personne ne gagne rien à fabriquer une collision sur son
-propre cache. Je l'ai quand même remplacé par SHA-256, par cohérence avec le reste du
-projet et pour éviter les fausses alertes des outils d'analyse automatique.
+le cache, et ce n'est pas exploitable : personne ne gagne rien à fabriquer une collision
+sur son propre cache. Je l'ai quand même remplacé par SHA-256, par cohérence avec le
+reste du projet et pour éviter les fausses alertes des outils d'analyse automatique.
 
 ## Défense en profondeur, ajoutée après coup
 
@@ -82,13 +82,13 @@ Trois routes touchent aux fichiers : `/docs/<nom>` ouvre un PDF indexé,
 `DELETE /api/documents/<nom>` le supprime, `PUT /api/documents/<nom>/subject` change sa
 matière. Toutes passent le nom par `secure_filename`, exigent l'extension `.pdf` et
 refusent ce qui n'est pas dans `docs/`. La lecture passe par `send_from_directory`, qui
-neutralise le path traversal — testé : `/docs/../app.py` renvoie 404.
+neutralise le path traversal. Testé : `/docs/../app.py` renvoie 404.
 
 - **Pas d'authentification** : l'appli n'écoute qu'en local. Si elle est lancée en
   Docker, ne pas exposer le port au-delà de la machine.
 - **Les cours partent chez un tiers** : chaque question envoie des extraits des PDF à
   l'API Groq. Convertir un cours scanné avec `ocr.py` envoie en plus l'image des pages
-  entières, annotations manuscrites comprises — une seule fois, au moment de la
+  entières, annotations manuscrites comprises, une seule fois, au moment de la
   conversion. Ne pas indexer de documents confidentiels.
 - **Pas de chiffrement du disque** : le contenu (extraits de cours, stats de révision)
   ne le justifie pas ; la seule vraie donnée sensible est la clé d'API, dans `.env`.
