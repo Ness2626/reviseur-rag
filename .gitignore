@@ -22,3 +22,6 @@ venv-rag/
 
 # PDF de démo/fallback à la racine (ne pas committer de matériel de cours)
 /*.pdf
+
+# Questions et annotations d'eval_recall.py (sujet d'examen, propriété de l'enseignant)
+eval_questions.json
