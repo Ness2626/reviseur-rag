@@ -41,6 +41,20 @@ Le pipeline RAG (Retrieval-Augmented Generation) :
 
 Pour la répétition espacée, chaque carte garde son état SM-2 (facilité, intervalle, prochaine échéance) dans une base SQLite. La note de 0 à 5 met à jour cet état : si la réponse est bonne, l'intervalle s'allonge ; si elle est mauvaise, la carte revient dès le lendemain. Seules les cartes arrivées à échéance sont proposées à la révision. Chaque révision est aussi journalisée (table `reviews`), ce qui alimente la courbe d'activité du tableau de bord. Les graphes sont rendus côté client avec Chart.js, la heatmap des échéances en CSS pur.
 
+## Évaluation
+
+`eval_recall.py` mesure la recherche sur des questions d'un vrai contrôle de crypto
+(non versionnées, propriété de l'enseignant). Pour chacune, j'ai annoté à la main le
+document et la page qui contiennent la réponse. Le recall@4 vérifie si ce passage
+figure dans les 4 que le moteur retourne.
+
+Sur les 10 questions, 7 avaient une réponse dans le corpus indexé. Les 3 autres
+demandaient un raisonnement, ou portaient sur une notion absente du cours. Pour ces 7
+questions, le recall@4 est de 7/7, et ce pour les trois variantes du moteur (vecteurs
+seuls, + BM25, + re-ranker). Mon corpus (cinq cours, cinq sujets distincts) est trop
+petit pour les départager. Côté génération, le système a répondu à 5 des 10 questions
+et a refusé les 5 autres sans jamais inventer, conformément à la consigne du prompt.
+
 ## Installation
 
 Python 3.10+.
