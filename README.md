@@ -109,14 +109,16 @@ python chatbot.py
 
 ```bash
 docker build -t reviseur-rag .
-docker run -p 5000:5000 -e GROQ_API_KEY=votre_cle_ici reviseur-rag
+docker run -p 127.0.0.1:5000:5000 -e GROQ_API_KEY=votre_cle_ici reviseur-rag
 ```
+
+`-p 127.0.0.1:5000:5000` plutôt que `-p 5000:5000` : sans adresse, Docker publie le port sur toutes les interfaces réseau, pas seulement en local.
 
 Le modèle d'embeddings est téléchargé pendant le build, donc le conteneur démarre vite. Pour conserver vos PDF et vos cartes entre deux lancements, montez le dossier `docs/` et la base SQLite (créez d'abord le fichier vide, sinon Docker monterait un dossier à sa place) :
 
 ```bash
 touch revision.db
-docker run -p 5000:5000 -e GROQ_API_KEY=votre_cle_ici \
+docker run -p 127.0.0.1:5000:5000 -e GROQ_API_KEY=votre_cle_ici \
   -v "$(pwd)/docs:/app/docs" \
   -v "$(pwd)/revision.db:/app/revision.db" \
   reviseur-rag
