@@ -65,10 +65,10 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Copie `.env.example` en `.env` et renseigne ta clé Groq (gratuite sur console.groq.com) :
+Copiez `.env.example` en `.env` et renseignez votre clé Groq (gratuite sur console.groq.com) :
 
 ```
-GROQ_API_KEY=ta_cle_ici
+GROQ_API_KEY=votre_cle_ici
 ```
 
 ## Lancement
@@ -77,9 +77,9 @@ GROQ_API_KEY=ta_cle_ici
 python app.py
 ```
 
-L'interface est sur http://127.0.0.1:5000. Au premier démarrage, le modèle d'embeddings (~80 Mo) est téléchargé. Ajoute tes PDF via le bouton « Ajouter un PDF », ou place-les directement dans le dossier `docs/`.
+L'interface est sur http://127.0.0.1:5000. Au premier démarrage, le modèle d'embeddings (~80 Mo) est téléchargé. Ajoutez vos PDF via le bouton « Ajouter un PDF », ou placez-les directement dans le dossier `docs/`.
 
-Pour lire tes cours depuis un autre dossier, par exemple un dossier Google Drive synchronisé, passe son chemin dans `DOCS_DIR` :
+Pour lire vos cours depuis un autre dossier, par exemple un dossier Google Drive synchronisé, passez son chemin dans `DOCS_DIR` :
 
 ```bash
 DOCS_DIR="/chemin/vers/mes-cours" python app.py
@@ -109,14 +109,14 @@ python chatbot.py
 
 ```bash
 docker build -t reviseur-rag .
-docker run -p 5000:5000 -e GROQ_API_KEY=ta_cle_ici reviseur-rag
+docker run -p 5000:5000 -e GROQ_API_KEY=votre_cle_ici reviseur-rag
 ```
 
-Le modèle d'embeddings est téléchargé pendant le build, donc le conteneur démarre vite. Pour conserver tes PDF et tes cartes entre deux lancements, monte le dossier `docs/` et la base SQLite (crée d'abord le fichier vide, sinon Docker monterait un dossier à sa place) :
+Le modèle d'embeddings est téléchargé pendant le build, donc le conteneur démarre vite. Pour conserver vos PDF et vos cartes entre deux lancements, montez le dossier `docs/` et la base SQLite (créez d'abord le fichier vide, sinon Docker monterait un dossier à sa place) :
 
 ```bash
 touch revision.db
-docker run -p 5000:5000 -e GROQ_API_KEY=ta_cle_ici \
+docker run -p 5000:5000 -e GROQ_API_KEY=votre_cle_ici \
   -v "$(pwd)/docs:/app/docs" \
   -v "$(pwd)/revision.db:/app/revision.db" \
   reviseur-rag

@@ -54,11 +54,12 @@ librairies en local dans `static/vendor/` : plus aucun CDN, et l'appli fonctionn
 ligne.
 
 **6 — Serveur de dev en Docker.** Le conteneur lançait le serveur de développement de
-Flask, qui est mono-thread. Il ne traitait qu'une chose à la fois, donc l'interface se
-figeait pendant chaque appel au LLM. Je suis passée à gunicorn : 4 fils d'exécution pour
-la réactivité, mais un seul worker. Chaque worker aurait sa propre copie de l'index en
-mémoire, et un document ajouté sur l'un manquerait sur l'autre. En local, je garde le
-lancement Flask classique.
+Flask, qui n'est pas fait pour tourner en continu (Flask le déconseille lui-même en
+production). Je suis passée à gunicorn, un serveur WSGI pensé pour ça, avec un timeout
+explicite pour les appels longs au LLM. Un seul worker, parce que mon index et le modèle
+d'embeddings vivent en mémoire — plusieurs workers en auraient chacun une copie
+divergente — mais 4 fils d'exécution pour garder l'interface réactive. En local, je
+garde le lancement Flask classique.
 
 **7 — Docker en root.** Rien ne changeait d'utilisateur dans le conteneur, donc tout
 tournait en administrateur : plus aucun « permission refusée » nulle part. Et le
@@ -83,6 +84,8 @@ Trois routes touchent aux fichiers : `/docs/<nom>` ouvre un PDF indexé,
 matière. Toutes passent le nom par `secure_filename`, exigent l'extension `.pdf` et
 refusent ce qui n'est pas dans `docs/`. La lecture passe par `send_from_directory`, qui
 neutralise le path traversal. Testé : `/docs/../app.py` renvoie 404.
+
+## Ce que je ne protège pas (choix assumés)
 
 - **Pas d'authentification** : l'appli n'écoute qu'en local. Si elle est lancée en
   Docker, ne pas exposer le port au-delà de la machine.
