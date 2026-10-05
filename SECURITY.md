@@ -41,7 +41,9 @@ au nom du document, un renommage silencieux aurait coupé la progression en deux
 chaque installation récupérait les dernières versions publiées, sans contrôle. J'ai
 tout épinglé à des versions précises et je passe `pip-audit` pour repérer les
 vulnérabilités connues. Le premier audit a d'ailleurs trouvé une vraie faille dans la
-bibliothèque qui lit les PDF, corrigée en changeant de version. Une GitHub Action
+bibliothèque qui lit les PDF ; depuis, l'audit en a trouvé d'autres à plusieurs
+reprises (la dernière fois trois CVE d'un coup, en septembre), à chaque fois
+corrigées en changeant de version. Une GitHub Action
 relance l'audit chaque lundi (et à chaque modification des dépendances) : le job échoue
 si une faille apparaît, ça me suffit comme alerte.
 
