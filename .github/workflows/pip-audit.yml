@@ -19,4 +19,6 @@ jobs:
       - run: pip install pip-audit
       # PYSEC-2026-3447 (setuptools) : bug de build sdist sur macOS uniquement, hors-scope.
       # setuptools est plafonné <82 par torch, donc non corrigeable sans changer torch.
-      - run: pip-audit -r requirements.txt --ignore-vuln PYSEC-2026-3447
+      # GHSA-xmj3-9gf7-h52w (setuptools) : sévérité faible, Windows uniquement (install_as_egg), hors-scope.
+      # Même blocage : correctif en 84.1.0, torch plafonne setuptools <82.
+      - run: pip-audit -r requirements.txt --ignore-vuln PYSEC-2026-3447 --ignore-vuln GHSA-xmj3-9gf7-h52w
