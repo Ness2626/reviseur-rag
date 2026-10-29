@@ -52,8 +52,9 @@ Sur les 10 questions, 7 avaient une réponse dans le corpus indexé. Les 3 autre
 demandaient un raisonnement, ou portaient sur une notion absente du cours. Pour ces 7
 questions, le recall@4 est de 7/7, et ce pour les trois variantes du moteur (vecteurs
 seuls, + BM25, + re-ranker). Mon corpus (cinq cours, cinq sujets distincts) est trop
-petit pour les départager. Côté génération, le système a répondu à 5 des 10 questions
-et a refusé les 5 autres sans jamais inventer, conformément à la consigne du prompt.
+petit pour les départager. Côté génération, il a répondu à 5 des 10 questions et refusé
+les 5 autres. Ces mêmes questions servent à vérifier que les réponses restent fidèles aux
+passages (`eval_answers.py`, petit échantillon).
 
 ## Installation
 
@@ -130,7 +131,7 @@ docker run -p 127.0.0.1:5000:5000 -e GROQ_API_KEY=votre_cle_ici \
 pytest
 ```
 
-165 tests couvrent l'ensemble du projet : l'algorithme SM-2 (calcul des intervalles, réinitialisation après un échec, plancher du facteur de facilité, validation des notes), le moteur RAG (recherche, fusion des scores, sélection et citation des sources), les endpoints Flask (upload, gestion des documents, révision, examen), la lecture des PDF et le cache d'index signé, l'examen blanc, la persistance SQLite (cartes, planning, compétences) et les solveurs d'exercices (réponses recalculées et vérifiées).
+165 tests couvrent l'ensemble du projet : l'algorithme SM-2 (calcul des intervalles, réinitialisation après un échec, plancher du facteur de facilité, validation des notes), le moteur RAG (recherche, fusion des scores, sélection et citation des sources), les endpoints Flask (upload, gestion des documents, révision, examen), la lecture des PDF et le cache d'index signé, l'examen blanc, la persistance SQLite (cartes, planning, compétences) et les solveurs d'exercices (réponses recalculées et vérifiées). Ils sont lancés à chaque push (GitHub Actions).
 
 Une GitHub Action lance aussi `pip-audit` chaque lundi (et à chaque modification de `requirements.txt`) : le job échoue si une dépendance a une vulnérabilité connue. Les versions sont toutes figées dans `requirements.txt`.
 
