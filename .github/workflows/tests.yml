@@ -1,0 +1,27 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      # Les modèles (embeddings, re-ranker) sont téléchargés par app.py à l'import :
+      # on les met en cache pour ne pas les retélécharger à chaque run.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-models-${{ hashFiles('chatbot.py') }}
+      - run: pip install -r requirements.txt
+      # app.py exige une clé au démarrage ; les tests n'appellent jamais Groq.
+      - run: pytest -q
+        env:
+          GROQ_API_KEY: fake-key-for-tests
