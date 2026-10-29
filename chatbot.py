@@ -267,6 +267,8 @@ def _answer_messages(question, chunks):
         "Après chaque affirmation tirée d'un passage, cite son numéro entre crochets, "
         "par exemple [1] ou [2][3]. Ne cite que les passages réellement utilisés, "
         "et n'ajoute pas de liste de sources à la fin. "
+        "N'ajoute aucun calcul, chiffre, définition ou fait qui ne figure pas dans les passages, "
+        "même s'il te paraît exact. "
         "Si la réponse ne se trouve pas dans les passages, dis-le clairement.\n\n"
         f"Passages :\n{context}\n\nQuestion : {question}"
     )
