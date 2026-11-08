@@ -25,3 +25,7 @@ venv-rag/
 
 # Questions et annotations d'eval_recall.py (sujet d'examen, propriété de l'enseignant)
 eval_questions.json
+
+# Notes de travail (gardées en local)
+AMELIORATIONS.md
+AUDIT-DESIGN.md
